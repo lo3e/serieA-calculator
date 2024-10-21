@@ -1,0 +1,19 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+venv/
+env/
+
+# IDE config
+.vscode/
+.idea/
+
+# Log files
+*.log
+*.tmp
+
+# Configuration files
+config.yaml
+secrets.json
