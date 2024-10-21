@@ -2,21 +2,17 @@
 
 import numpy as np
 from datetime import datetime, timedelta
-from SerieABayesModelAdvanced import SerieABayesModelAdvanced  # Assumiamo che questa sia la classe che abbiamo creato prima
+from serie_a_bayes import SerieABayesModel
+from  loading_historical_data import load_historical_data
 
 class SerieABettingSystem:
-    def __init__(self, teams):
-        self.model = SerieABayesModelAdvanced(teams)
+    def __init__(self, current_teams):
+        self.model = SerieABayesModel(current_teams)
         self.performance_tracker = []
         self.value_threshold = 1.1  # Soglia per identificare value bets
 
     def initialize_model(self, historical_data):
         self.model.initialize_with_historical_data(historical_data)
-
-    def update_player_impacts(self, impacts):
-        for team, players in impacts.items():
-            for player, impact in players.items():
-                self.model.update_player_impact(team, player, impact)
 
     def analyze_match(self, home_team, away_team, market_odds):
         """
@@ -65,12 +61,13 @@ class SerieABettingSystem:
             prediction = self.model.predict_match(match['home_team'], match['away_team'])
 
             # Calcola log loss
-            if match['result'] == 'home_win':
+            if match['home_goals'] > match['away_goals']:
                 actual = [1, 0, 0]
-            elif match['result'] == 'draw':
+            elif match['home_goals'] == match['away_goals']:
                 actual = [0, 1, 0]
             else:
                 actual = [0, 0, 1]
+
             predicted = [prediction['home_win'], prediction['draw'], prediction['away_win']]
             total_log_loss -= np.sum(np.multiply(actual, np.log(predicted)))
 
@@ -127,9 +124,16 @@ class SerieABettingSystem:
         """
         # Qui dovresti implementare la logica per ottenere le partite della prossima giornata
         next_matches = [
-            {"home_team": "Juventus", "away_team": "Inter", "market_odds": {"home_win": 2.1, "draw": 3.2, "away_win": 3.5}},
-            {"home_team": "Milan", "away_team": "Roma", "market_odds": {"home_win": 1.9, "draw": 3.4, "away_win": 4.0}},
-            # Aggiungi altre partite qui
+            {"home_team": "Udinese", "away_team": "Cagliari", "market_odds": {"home_win": 2.40, "draw": 2.95, "away_win": 3.30}},
+            {"home_team": "Torino", "away_team": "Como", "market_odds": {"home_win": 2.50, "draw": 3.20, "away_win": 2.85}},
+            {"home_team": "Napoli", "away_team": "Lecce", "market_odds": {"home_win": 1.30, "draw": 5.40, "away_win": 9.80}},
+            {"home_team": "Bologna", "away_team": "Milan", "market_odds": {"home_win": 3.50, "draw": 3.50, "away_win": 2.05}},
+            {"home_team": "Atalanta", "away_team": "Verona", "market_odds": {"home_win": 1.40, "draw": 5.00, "away_win": 7.00}},
+            {"home_team": "Parma", "away_team": "Empoli", "market_odds": {"home_win": 2.20, "draw": 3.35, "away_win": 3.30}},
+            {"home_team": "Lazio", "away_team": "Genoa", "market_odds": {"home_win": 1.53, "draw": 4.20, "away_win": 6.00}},
+            {"home_team": "Monza", "away_team": "Venezia", "market_odds": {"home_win": 2.20, "draw": 3.25, "away_win": 3.40}},
+            {"home_team": "Inter", "away_team": "Juventus", "market_odds": {"home_win": 1.75, "draw": 3.50, "away_win": 4.90}},
+            {"home_team": "Fiorentina", "away_team": "Roma", "market_odds": {"home_win": 2.55, "draw": 3.20, "away_win": 2.80}}
         ]
 
         report = f"Report per la giornata del {date}\n\n"
@@ -155,21 +159,14 @@ class SerieABettingSystem:
         return report
 
 # Esempio di utilizzo
-teams = ["Juventus", "Inter", "Milan", "Roma", "Napoli", "Lazio"]
-betting_system = SerieABettingSystem(teams)
+current_teams = ["Atalanta", "Bologna", "Cagliari", "Como", "Empoli", "Fiorentina", 
+    "Genoa", "Inter", "Juventus", "Lazio", "Lecce", "Milan", "Monza", "Napoli", "Parma", "Roma", 
+    "Torino", "Udinese", "Venezia", "Verona"]
+betting_system = SerieABettingSystem(current_teams)
 
 # Inizializza il sistema con dati storici
-historical_data = [
-    {"home_team": "Juventus", "away_team": "Inter", "home_goals": 2, "away_goals": 1, "date": "2022-09-15"},
-    # Aggiungi più dati storici qui
-]
+historical_data = load_historical_data('historical_data.json')
 betting_system.initialize_model(historical_data)
-
-# Aggiorna gli impatti dei giocatori
-betting_system.update_player_impacts({
-    "Juventus": {"Cristiano Ronaldo": 0.1},
-    "Inter": {"Romelu Lukaku": -0.05}
-})
 
 # Traccia la performance per alcune giornate
 for i in range(5):
