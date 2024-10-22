@@ -4,6 +4,7 @@ import numpy as np
 from datetime import datetime, timedelta
 from serie_a_bayes import SerieABayesModel
 from  loading_historical_data import load_historical_data
+from fpdf import FPDF
 
 class SerieABettingSystem:
     def __init__(self, current_teams):
@@ -61,9 +62,9 @@ class SerieABettingSystem:
             prediction = self.model.predict_match(match['home_team'], match['away_team'])
 
             # Calcola log loss
-            if match['home_goals'] > match['away_goals']:
+            if match['result'] == 'home_win':
                 actual = [1, 0, 0]
-            elif match['home_goals'] == match['away_goals']:
+            elif match['result'] == 'away_win':
                 actual = [0, 1, 0]
             else:
                 actual = [0, 0, 1]
@@ -72,7 +73,8 @@ class SerieABettingSystem:
             total_log_loss -= np.sum(np.multiply(actual, np.log(predicted)))
 
             # Controlla se la previsione più probabile era corretta
-            if match['result'] == max(prediction, key=prediction.get):
+            valid_predictions = {outcome: prob for outcome, prob in prediction.items() if isinstance(prob, (int, float))}
+            if match['result'] == max(valid_predictions, key=valid_predictions.get):
                 correct_predictions += 1
 
             # Calcola il valore totale delle value bets
@@ -169,15 +171,20 @@ historical_data = load_historical_data('historical_data.json')
 betting_system.initialize_model(historical_data)
 
 # Traccia la performance per alcune giornate
-for i in range(5):
+for i in range(8):
     date = (datetime.now() - timedelta(days=7*i)).strftime("%Y-%m-%d")
-    matches = [
-        {"home_team": "Juventus", "away_team": "Milan", "result": "home_win", "market_odds": {"home_win": 1.8, "draw": 3.5, "away_win": 4.2}},
-        {"home_team": "Inter", "away_team": "Roma", "result": "draw", "market_odds": {"home_win": 2.0, "draw": 3.2, "away_win": 3.8}},
-        # Aggiungi più partite qui
-    ]
+    matches = load_historical_data('odds.json')
     betting_system.track_performance(date, matches)
 
 # Genera un report per la prossima giornata
 report = betting_system.generate_report(datetime.now().strftime("%Y-%m-%d"))
-print(report)
+#print(report)
+pdf = FPDF()
+pdf.add_page()
+pdf.set_font("Arial", size=12)
+
+for line in report.split('\n'):
+    pdf.cell(200, 10, txt=line, ln=True)
+
+pdf.output("report.pdf")
+print("Report salvato come report.pdf")

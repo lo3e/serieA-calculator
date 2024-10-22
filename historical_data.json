@@ -11128,5 +11128,75 @@
         "home_goals": 2,
         "away_goals": 1,
         "date": "2024-10-06"
+    },
+    {
+        "home_team": "Como",
+        "away_team": "Parma",
+        "home_goals": 1,
+        "away_goals": 1,
+        "date": "2024-10-19"
+    },
+    {
+        "home_team": "Genoa",
+        "away_team": "Bologna",
+        "home_goals": 2,
+        "away_goals": 2,
+        "date": "2024-10-19"
+    },
+    {
+        "home_team": "Milan",
+        "away_team": "Udinese",
+        "home_goals": 1,
+        "away_goals": 0,
+        "date": "2024-10-19"
+    },
+    {
+        "home_team": "Juventus",
+        "away_team": "Lazio",
+        "home_goals": 1,
+        "away_goals": 0,
+        "date": "2024-10-19"
+    },
+    {
+        "home_team": "Empoli",
+        "away_team": "Napoli",
+        "home_goals": 0,
+        "away_goals": 1,
+        "date": "2024-10-20"
+    },
+    {
+        "home_team": "Lecce",
+        "away_team": "Fiorentina",
+        "home_goals": 0,
+        "away_goals": 6,
+        "date": "2024-10-20"
+    },
+    {
+        "home_team": "Venezia",
+        "away_team": "Atalanta",
+        "home_goals": 0,
+        "away_goals": 2,
+        "date": "2024-10-20"
+    },
+    {
+        "home_team": "Cagliari",
+        "away_team": "Torino",
+        "home_goals": 3,
+        "away_goals": 2,
+        "date": "2024-10-20"
+    },
+    {
+        "home_team": "Roma",
+        "away_team": "Inter",
+        "home_goals": 0,
+        "away_goals": 1,
+        "date": "2024-10-20"
+    },
+    {
+        "home_team": "Verona",
+        "away_team": "Monza",
+        "home_goals": 0,
+        "away_goals": 3,
+        "date": "2024-10-21"
     }
 ]
