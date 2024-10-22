@@ -3,6 +3,8 @@ import argparse
 import os
 from models.base_model import BaseModel
 from models.bayes_model import SerieABayesModelWrapper
+from models.mc_wrapper import SerieAMonteCarloWrapper
+from models.ensemble_wrapper import SerieAEnsembleWrapper
 from utils.data_loader import load_historical_data
 from config.teams import CURRENT_TEAMS
 
@@ -70,16 +72,22 @@ def get_argument_parser():
     parser.add_argument(
         '--model', 
         type=str, 
-        choices=['bayes', 'all'],
-        default='all',
-        help='Modello da utilizzare per le predizioni (default: all)'
+        choices=['bayes', 'montecarlo', 'ensemble', 'all'],
+        default='bayes',
+        help='Modello da utilizzare per le predizioni (default: bayes)'
     )
     parser.add_argument(
         '--bayes-type',
         type=str,
         choices=['standard', 'draw'],
         default='standard',
-        help='Tipo di modello bayesiano da utilizzare (default: simple)'
+        help='Tipo di modello bayesiano da utilizzare (default: standard)'
+    )
+    parser.add_argument(
+        '--simulations',
+        type=int,
+        default=10000,
+        help='Numero di simulazioni per il modello Monte Carlo (default: 10000)'
     )
 
     parser.add_argument(
@@ -147,7 +155,19 @@ def main():
                 )
             bayes_model.initialize_model(historical_data, decay_factor=0.5)
             prediction_system.register_model('bayes', bayes_model)
-        
+
+        if args.model in ['montecarlo', 'all']:  # Aggiunta gestione modello Monte Carlo
+            monte_carlo_model = SerieAMonteCarloWrapper(
+                CURRENT_TEAMS,
+                n_simulations=args.simulations
+            )
+            monte_carlo_model.initialize_model(historical_data, decay_factor=0.5)
+            prediction_system.register_model('montecarlo', monte_carlo_model)
+        if args.model in ['ensemble', 'all']:
+            ensemble_model = SerieAEnsembleWrapper(CURRENT_TEAMS)
+            ensemble_model.initialize_model(historical_data, decay_factor=0.5)
+            prediction_system.register_model('ensemble', ensemble_model)
+
         # Stampa modelli disponibili
         print("\nModelli disponibili:", prediction_system.get_available_models())
         
