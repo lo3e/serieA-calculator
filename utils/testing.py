@@ -1,3 +1,4 @@
+'''
 from serie_a_bayes import SerieABayesModel
 from  loading_historical_data import load_historical_data
 
@@ -15,4 +16,4 @@ model.initialize_with_historical_data(loading_historical_data, decay_factor=0.5)
 test_data = loading_historical_data
 test_results = model.test_model(test_data)
 print(f"Risultati del test: {test_results}")
-
+'''

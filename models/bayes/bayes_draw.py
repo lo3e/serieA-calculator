@@ -3,7 +3,7 @@ from scipy.stats import poisson
 from datetime import datetime
 from sklearn.metrics import log_loss, brier_score_loss
 
-class SerieABayesModel:
+class SerieABayesModelDraw:
     def __init__(self, current_teams):
         self.current_teams = set(current_teams)
         self.attack_strength = {}
@@ -12,7 +12,7 @@ class SerieABayesModel:
         self.average_goals = 2.6
         self.draw_correction_factor = 0.1  # Nuovo parametro per la correzione dei pareggi
 
-    def initialize_with_historical_data(self, historical_data, decay_factor=0.5):
+    def initialize_model(self, historical_data, decay_factor=0.5):
         """
         Inizializza le forze delle squadre usando dati storici con pesi basati sul tempo.
         

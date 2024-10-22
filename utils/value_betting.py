@@ -2,13 +2,13 @@
 
 import numpy as np
 from datetime import datetime, timedelta
-from serie_a_bayes import SerieABayesModel
-from  loading_historical_data import load_historical_data
+from models.bayes.bayes_draw import *
+from  utils.data_loader import load_historical_data
 from fpdf import FPDF
 
 class SerieABettingSystem:
     def __init__(self, current_teams):
-        self.model = SerieABayesModel(current_teams)
+        self.model = SerieABayesModelDraw(current_teams)
         self.performance_tracker = []
         self.value_threshold = 1.1  # Soglia per identificare value bets
 
