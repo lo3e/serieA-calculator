@@ -1,0 +1,9 @@
+Da migliorare
+
+- inserire un copyright in fondo
+- nella sezione "dati storici" quei comandi di selezione non modificano la visualizzazione
+- migliorare la legenda della sezione "backup"
+- nella sezione di "validazione" inserire la data tramite il calendario e non a mano, e non consentire di poter inserire caratteri ulteriori in più alla data
+- nella sezione "confronto modelli" si potrebbero aggiungere delle finestre temporali
+- in "analisi temporali" si potrbe migliroare la visualizzazione delle tabelle in termini di layout
+- nella sezione "predizioni" ci sono dei valori che sono sempre 0%, la tabella dei risultati ha i titoli non leggibili e devono essere allargati a mano, infine credo si possa migliorare l'estetica complessiva

@@ -148,9 +148,20 @@ class PredictorGUI(QMainWindow):
         input_layout.addWidget(self.mc_iterations_spin, 2, 1)
         
         # Tabella partite
-        matches_group = QGroupBox("Partite della Giornata")
+        matches_group = QGroupBox("Partite da Analizzare")
         matches_layout = QVBoxLayout(matches_group)
         
+        # Aggiungi controlli per la gestione delle righe
+        matches_controls = QHBoxLayout()
+        self.matches_count_spin = QSpinBox()
+        self.matches_count_spin.setRange(1, 10)
+        self.matches_count_spin.setValue(10)
+        self.matches_count_spin.valueChanged.connect(self._update_matches_table)
+        matches_controls.addWidget(QLabel("Numero partite:"))
+        matches_controls.addWidget(self.matches_count_spin)
+        matches_controls.addStretch()
+        matches_layout.addLayout(matches_controls)
+
         self.matches_table = QTableWidget()
         self.matches_table.setColumnCount(2)
         self.matches_table.setRowCount(10)  # 10 partite per giornata
@@ -196,6 +207,14 @@ class PredictorGUI(QMainWindow):
         results_layout.addWidget(self.stats_text)
         
         layout.addWidget(results_group)
+
+    def _update_matches_table(self):
+        """
+        Aggiorna la visibilità delle righe della tabella in base al numero selezionato
+        """
+        selected_rows = self.matches_count_spin.value()
+        for row in range(10):
+            self.matches_table.setRowHidden(row, row >= selected_rows)
 
     def _update_model_options(self):
         """Aggiorna le opzioni aggiuntive in base al modello selezionato"""
@@ -250,10 +269,10 @@ class PredictorGUI(QMainWindow):
         
         # Historical data table
         self.historical_table = QTableWidget()
-        self.historical_table.setColumnCount(7)
+        self.historical_table.setColumnCount(6)
         self.historical_table.setHorizontalHeaderLabels([
             "Data", "Squadra Casa", "Squadra Trasferta", 
-            "Goal Casa", "Goal Trasferta", "Risultato", "Note"
+            "Goal Casa", "Goal Trasferta", "Risultato"
         ])
         
         layout.addWidget(self.historical_table)
@@ -348,7 +367,8 @@ class PredictorGUI(QMainWindow):
             
             # Raccogli tutte le partite
             matches = []
-            for row in range(10):
+            selected_rows = self.matches_count_spin.value()
+            for row in range(selected_rows):
                 home_combo = self.matches_table.cellWidget(row, 0)
                 away_combo = self.matches_table.cellWidget(row, 1)
                 if home_combo and away_combo:
@@ -357,6 +377,9 @@ class PredictorGUI(QMainWindow):
                     if home_team == away_team:
                         raise ValueError(f"Riga {row+1}: Le squadre devono essere diverse")
                     matches.append((home_team, away_team))
+            
+            if not matches:
+                raise ValueError("Inserire almeno una partita")
             
             # Crea il modello appropriato
             model_type = self.model_combo.currentText()
@@ -1032,7 +1055,8 @@ class PredictorGUI(QMainWindow):
         test_matches = self._get_recent_matches(10)  # Get last 10 matches for testing
         
         models = {
-            'bayes': SerieABayesModelWrapper(CURRENT_TEAMS, model_type='standard'),
+            'bayes_std': SerieABayesModelWrapper(CURRENT_TEAMS, model_type='standard'),
+            'bayes_draw': SerieABayesModelWrapper(CURRENT_TEAMS, model_type='draw'),
             'montecarlo': SerieAMonteCarloWrapper(CURRENT_TEAMS, n_simulations=10000),
             'ensemble': SerieAEnsembleWrapper(CURRENT_TEAMS)
         }
@@ -1102,7 +1126,8 @@ class PredictorGUI(QMainWindow):
             
             # Run validation for each model
             models = {
-                'bayes': SerieABayesModelWrapper(CURRENT_TEAMS, model_type='standard'),
+                'bayes_std': SerieABayesModelWrapper(CURRENT_TEAMS, model_type='standard'),
+                'bayes_draw': SerieABayesModelWrapper(CURRENT_TEAMS, model_type='draw'),
                 'montecarlo': SerieAMonteCarloWrapper(CURRENT_TEAMS, n_simulations=10000),
                 'ensemble': SerieAEnsembleWrapper(CURRENT_TEAMS)
             }
