@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QHBoxLayout, QLabel, QComboBox, QSpinBox, 
                            QTextEdit, QPushButton, QTabWidget, QGridLayout,
                            QTableWidget, QTableWidgetItem, QMessageBox,
-                           QScrollArea, QFileDialog, QProgressBar, QGroupBox)
+                           QScrollArea, QFileDialog, QProgressBar, QGroupBox, QSizePolicy)
 from PyQt6.QtCore import Qt, QTimer
 import pandas as pd
 import numpy as np
@@ -495,15 +495,17 @@ class PredictorGUI(QMainWindow):
         scroll_area.setWidgetResizable(True)
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout(scroll_widget)
-        scroll_layout.setSpacing(30)  # Aggiungi spazio tra i widget
-        
+        scroll_layout.setSpacing(0)  # Aggiungi spazio tra i widget
+        scroll_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
         # Performance graph
         performance_container = QWidget()
         performance_layout = QVBoxLayout(performance_container)
-        self.performance_fig = Figure(figsize=(12, 6))
+        performance_layout.setContentsMargins(0, 0, 0, 0)
+        self.performance_fig = Figure(figsize=(12, 8))
         self.performance_canvas = FigureCanvas(self.performance_fig)
         # Aumenta lo spazio per le etichette sull'asse x
-        self.performance_fig.subplots_adjust(bottom=0.2)
+        self.performance_fig.subplots_adjust(bottom=0.15, top=0.95)
         performance_layout.addWidget(self.performance_canvas)
         performance_container.hide()  # Nascosto inizialmente
         scroll_layout.addWidget(performance_container)
@@ -522,9 +524,10 @@ class PredictorGUI(QMainWindow):
         # Results distribution graph (Wins, Draws, Losses)
         results_container = QWidget()
         results_layout = QVBoxLayout(results_container)
-        self.results_fig = Figure(figsize=(12, 6))
+        performance_layout.setContentsMargins(0, 0, 0, 0)
+        self.results_fig = Figure(figsize=(12, 8))
         self.results_canvas = FigureCanvas(self.results_fig)
-        self.results_fig.subplots_adjust(bottom=0.2, left=0.1, right=0.95, top=0.9)
+        self.results_fig.subplots_adjust(bottom=0.15, top=0.95)
         results_layout.addWidget(self.results_canvas)
         results_container.hide()  # Nascosto inizialmente
         scroll_layout.addWidget(results_container)
@@ -533,12 +536,24 @@ class PredictorGUI(QMainWindow):
         # Head-to-head results graph
         self.h2h_container = QWidget()
         h2h_layout = QVBoxLayout(self.h2h_container)
-        self.h2h_fig = Figure(figsize=(12, 6))
+        performance_layout.setContentsMargins(0, 0, 0, 0)
+        self.h2h_fig = Figure(figsize=(12, 10))
         self.h2h_canvas = FigureCanvas(self.h2h_fig)
-        self.h2h_fig.subplots_adjust(bottom=0.2, left=0.1, right=0.95, top=0.9)
+        self.h2h_fig.subplots_adjust(bottom=0.15, top=0.95)
         h2h_layout.addWidget(self.h2h_canvas)
+        h2h_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        scroll_layout.addWidget(self.h2h_container, alignment=Qt.AlignmentFlag.AlignCenter)
         self.h2h_container.hide()
-        scroll_layout.addWidget(self.h2h_container)
+
+        # Stretchers per centrare verticalmente il grafico testa a testa quando è visibile
+        self.top_stretcher = QWidget()
+        self.top_stretcher.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.bottom_stretcher = QWidget()
+        self.bottom_stretcher.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        scroll_layout.insertWidget(0, self.top_stretcher)
+        scroll_layout.addWidget(self.bottom_stretcher)
+        self.top_stretcher.hide()
+        self.bottom_stretcher.hide()
 
         # Set up scroll area
         scroll_area.setWidget(scroll_widget)
@@ -580,12 +595,22 @@ class PredictorGUI(QMainWindow):
             self.results_container.hide()
 
     def _toggle_h2h_mode(self):
-        show_h2h = self.h2h_button.isChecked()
-        self.opponent_label.setVisible(show_h2h)
-        self.opponent_team_combo.setVisible(show_h2h)
-        self.h2h_container.setVisible(show_h2h)
-        if not show_h2h:
+        h2h_enabled = self.h2h_button.isChecked()
+        if h2h_enabled:
+            self.opponent_label.show()
+            self.opponent_team_combo.show()
+            self.performance_container.hide()
+            self.results_container.hide()
+            # Reset della selezione avversario
             self.opponent_team_combo.setCurrentText("Seleziona avversario")
+        else:
+            self.opponent_label.hide()
+            self.opponent_team_combo.hide()
+            self.h2h_container.hide()
+            # Mostra di nuovo i grafici normali se c'è una squadra selezionata
+            if self.analysis_team_combo.currentText() != "Seleziona squadra":
+                self.performance_container.show()
+                self.results_container.show()
 
     def _setup_comparison_tab(self, tab):
         layout = QVBoxLayout(tab)
@@ -751,10 +776,20 @@ class PredictorGUI(QMainWindow):
             start_date = end_date - timedelta(days=30)
         elif period == "Ultimi 3 mesi":
             start_date = end_date - timedelta(days=90)
-        elif period == "Ultima stagione":
-            start_date = end_date - timedelta(days=365)
+        elif period == "Da inizio stagione":
+            # Calcola l'inizio della stagione corrente (assumiamo che inizi ad agosto)
+            current_year = end_date.year
+            if end_date.month < 8:  # Se siamo prima di agosto, usa l'anno precedente
+                current_year -= 1
+            start_date = datetime(current_year, 8, 1)
         else:
             return
+
+        # Aggiorna la visibilità dei container in base alla modalità
+        if not self.h2h_button.isChecked():
+            self.performance_container.show()
+            self.results_container.show()
+            self.h2h_container.hide()
         
         # Filter historical data
         team_matches = [
