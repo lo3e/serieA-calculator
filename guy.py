@@ -452,7 +452,7 @@ class PredictorGUI(QMainWindow):
         self.analysis_team_combo = QComboBox()
         self.analysis_team_combo.addItem("Seleziona squadra")  # Aggiunto item iniziale
         self.analysis_team_combo.addItems(CURRENT_TEAMS)
-        self.analysis_team_combo.currentTextChanged.connect(self._update_analysis_graphs)
+        self.analysis_team_combo.currentTextChanged.connect(self._on_team_selected)
         
         # Time period selection
         period_label = QLabel("Periodo:")
@@ -544,6 +544,18 @@ class PredictorGUI(QMainWindow):
         layout.addWidget(scroll_area)
 
         #Inizializza i grafici
+        self._update_analysis_graphs()
+
+    def _on_team_selected(self, team_name):
+        # Abilita il period_combo solo se è stata selezionata una squadra valida
+        if team_name != "Seleziona squadra":
+            self.period_combo.setEnabled(True)
+            self.h2h_button.setEnabled(True)
+        else:
+            self.period_combo.setEnabled(False)
+            self.h2h_button.setEnabled(False)
+        
+        # Aggiorna i grafici
         self._update_analysis_graphs()
         
     def _toggle_h2h_mode(self):
