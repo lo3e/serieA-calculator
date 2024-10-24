@@ -457,9 +457,10 @@ class PredictorGUI(QMainWindow):
         # Time period selection
         period_label = QLabel("Periodo:")
         self.period_combo = QComboBox()
+        self.period_combo.addItem("Seleziona periodo")  # Aggiunge opzione vuota iniziale
         self.period_combo.addItems(["Da inizio stagione", "Ultimi 3 mesi", "Ultimo mese"])
         self.period_combo.setEnabled(False)  # Disabilitato inizialmente
-        self.period_combo.currentTextChanged.connect(self._update_analysis_graphs)
+        self.period_combo.currentTextChanged.connect(self._on_period_selected)
 
         # Opponent selection (inizialmente nascosto)
         self.opponent_label = QLabel("Avversario:")
@@ -551,13 +552,33 @@ class PredictorGUI(QMainWindow):
         if team_name != "Seleziona squadra":
             self.period_combo.setEnabled(True)
             self.h2h_button.setEnabled(True)
+            # Reset del period_combo quando si cambia squadra
+            self.period_combo.setCurrentText("Seleziona periodo")
+            # Nascondi i grafici quando si cambia squadra
+            self.performance_container.hide()
+            self.results_container.hide()
+            self.h2h_container.hide()
         else:
             self.period_combo.setEnabled(False)
             self.h2h_button.setEnabled(False)
+            self.performance_container.hide()
+            self.results_container.hide()
+            self.h2h_container.hide()
         
         # Aggiorna i grafici
         self._update_analysis_graphs()
         
+    def _on_period_selected(self, period):
+        if (self.analysis_team_combo.currentText() != "Seleziona squadra" and 
+            period != "Seleziona periodo"):
+            # Aggiorna e mostra i grafici solo quando sono selezionati sia squadra che periodo
+            self._update_analysis_graphs()
+            self.performance_container.show()
+            self.results_container.show()
+        else:
+            self.performance_container.hide()
+            self.results_container.hide()
+
     def _toggle_h2h_mode(self):
         show_h2h = self.h2h_button.isChecked()
         self.opponent_label.setVisible(show_h2h)
@@ -719,6 +740,11 @@ class PredictorGUI(QMainWindow):
         period = self.period_combo.currentText()
         opponent = self.opponent_team_combo.currentText()  # Aggiungi questa riga
         
+
+        # Verifica che siano state fatte le selezioni necessarie
+        if team == "Seleziona squadra" or period == "Seleziona periodo":
+            return
+
         # Calculate date range
         end_date = datetime.now()
         if period == "Ultimo mese":
@@ -727,8 +753,8 @@ class PredictorGUI(QMainWindow):
             start_date = end_date - timedelta(days=90)
         elif period == "Ultima stagione":
             start_date = end_date - timedelta(days=365)
-        else:  # Tutto
-            start_date = datetime.min
+        else:
+            return
         
         # Filter historical data
         team_matches = [
@@ -737,40 +763,45 @@ class PredictorGUI(QMainWindow):
             datetime.strptime(match['date'], '%Y-%m-%d') >= start_date
         ]
         
+        if not team_matches:  # Se non ci sono dati per il periodo selezionato
+            self.performance_container.hide()
+            self.results_container.hide()
+            return
+
         # Update performance graph
         self.performance_fig.clear()
         ax = self.performance_fig.add_subplot(111)
         
-        if team_matches:  # Verifica che ci siano dati da visualizzare
-            dates = [datetime.strptime(match['date'], '%Y-%m-%d') for match in team_matches]
-            goals_scored = []
-            goals_conceded = []
-            
-            for match in team_matches:
-                if match['home_team'] == team:
-                    goals_scored.append(match['home_goals'])
-                    goals_conceded.append(match['away_goals'])
-                else:
-                    goals_scored.append(match['away_goals'])
-                    goals_conceded.append(match['home_goals'])
-            
-            ax.plot(dates, goals_scored, label='Goal Fatti', marker='o')
-            ax.plot(dates, goals_conceded, label='Goal Subiti', marker='o')
-            ax.set_title(f'Andamento {team}')
-            ax.set_xlabel('Data')
-            ax.set_ylabel('Goal')
-            ax.legend()
-            
-            # Formatta le date sull'asse x
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%d-%m-%Y'))
-            ax.tick_params(axis='x', rotation=45)
-            
-            # Imposta i limiti dell'asse y per mostrare sempre da 0 al massimo + 1
-            max_goals = max(max(goals_scored), max(goals_conceded)) + 1
-            ax.set_ylim(0, max_goals)
+        dates = [datetime.strptime(match['date'], '%Y-%m-%d') for match in team_matches]
+        goals_scored = []
+        goals_conceded = []
+        
+        for match in team_matches:
+            if match['home_team'] == team:
+                goals_scored.append(match['home_goals'])
+                goals_conceded.append(match['away_goals'])
+            else:
+                goals_scored.append(match['away_goals'])
+                goals_conceded.append(match['home_goals'])
+        
+        ax.plot(dates, goals_scored, label='Goal Fatti', marker='o')
+        ax.plot(dates, goals_conceded, label='Goal Subiti', marker='o')
+        ax.set_title(f'Andamento {team}')
+        ax.set_xlabel('Data')
+        ax.set_ylabel('Goal')
+        ax.legend()
+        
+        # Formatta le date sull'asse x
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%d-%m-%Y'))
+        ax.tick_params(axis='x', rotation=45)
+        
+        # Imposta i limiti dell'asse y per mostrare sempre da 0 al massimo + 1
+        max_goals = max(max(goals_scored), max(goals_conceded)) + 1
+        ax.set_ylim(0, max_goals)
             
         self.performance_fig.tight_layout()
         self.performance_canvas.draw()
+        self.performance_container.show()
         
         # Update prediction accuracy graph if we have prediction history
         if self.prediction_history:
@@ -782,18 +813,18 @@ class PredictorGUI(QMainWindow):
                 if team in [pred['home_team'], pred['away_team']]
             ]
             
-            accuracy = [pred['accuracy'] for pred in team_predictions]
-            dates = [pred['date'] for pred in team_predictions]
-            
-            ax.plot(dates, accuracy, label='Accuratezza Predizioni', marker='o')
-            ax.set_title(f'Accuratezza Predizioni per {team}')
-            ax.set_xlabel('Data')
-            ax.set_ylabel('Accuratezza')
-            ax.legend()
-            ax.tick_params(axis='x', rotation=45)
-            self.prediction_accuracy_fig.tight_layout()  # Aggiunto per migliorare la visualizzazione
-            
-            self.prediction_accuracy_canvas.draw()
+            if team_predictions:
+                accuracy = [pred['accuracy'] for pred in team_predictions]
+                dates = [pred['date'] for pred in team_predictions]
+                
+                ax.plot(dates, accuracy, label='Accuratezza Predizioni', marker='o')
+                ax.set_title(f'Accuratezza Predizioni per {team}')
+                ax.set_xlabel('Data')
+                ax.set_ylabel('Accuratezza')
+                ax.legend()
+                ax.tick_params(axis='x', rotation=45)
+                self.prediction_accuracy_fig.tight_layout()  # Aggiunto per migliorare la visualizzazione
+                self.prediction_accuracy_canvas.draw()
 
         # Nuovo grafico: Distribuzione risultati
         self.results_fig.clear()
@@ -828,51 +859,52 @@ class PredictorGUI(QMainWindow):
         for i, v in enumerate(results):
             ax.text(i, v, str(v), ha='center', va='bottom')
         self.results_fig.tight_layout()
-        
         self.results_canvas.draw()
+        self.results_container.show()
         
         # Nuovo grafico: Testa a testa
         if opponent and opponent != "Seleziona avversario" and team != opponent:
-            self.h2h_fig.clear()
-            ax = self.h2h_fig.add_subplot(111)
-            
             h2h_matches = [
                 match for match in self.historical_data
                 if (match['home_team'] == team and match['away_team'] == opponent) or
-                   (match['home_team'] == opponent and match['away_team'] == team)
+                (match['home_team'] == opponent and match['away_team'] == team)
             ]
             
-            team_wins = 0
-            draws = 0
-            opponent_wins = 0
-            
-            for match in h2h_matches:
-                if match['home_team'] == team:
-                    if match['home_goals'] > match['away_goals']:
-                        team_wins += 1
-                    elif match['home_goals'] == match['away_goals']:
-                        draws += 1
+            if h2h_matches:  # Se ci sono partite testa a testa
+                self.h2h_fig.clear()
+                ax = self.h2h_fig.add_subplot(111)
+                
+                team_wins = draws = opponent_wins = 0
+                
+                for match in h2h_matches:
+                    if match['home_team'] == team:
+                        if match['home_goals'] > match['away_goals']:
+                            team_wins += 1
+                        elif match['home_goals'] == match['away_goals']:
+                            draws += 1
+                        else:
+                            opponent_wins += 1
                     else:
-                        opponent_wins += 1
-                else:
-                    if match['away_goals'] > match['home_goals']:
-                        team_wins += 1
-                    elif match['away_goals'] == match['home_goals']:
-                        draws += 1
-                    else:
-                        opponent_wins += 1
-            
-            results = [team_wins, draws, opponent_wins]
-            labels = [f'Vittorie {team}', 'Pareggi', f'Vittorie {opponent}']
-            colors = ['blue', 'yellow', 'red']
-            
-            ax.bar(labels, results, color=colors)
-            ax.set_title(f'Storico {team} vs {opponent}')
-            for i, v in enumerate(results):
-                ax.text(i, v, str(v), ha='center', va='bottom')
-            self.h2h_fig.tight_layout()
-            
-            self.h2h_canvas.draw()
+                        if match['away_goals'] > match['home_goals']:
+                            team_wins += 1
+                        elif match['away_goals'] == match['home_goals']:
+                            draws += 1
+                        else:
+                            opponent_wins += 1
+                
+                results = [team_wins, draws, opponent_wins]
+                labels = [f'Vittorie {team}', 'Pareggi', f'Vittorie {opponent}']
+                colors = ['blue', 'yellow', 'red']
+                
+                ax.bar(labels, results, color=colors)
+                ax.set_title(f'Storico {team} vs {opponent}')
+                for i, v in enumerate(results):
+                    ax.text(i, v, str(v), ha='center', va='bottom')
+                self.h2h_fig.tight_layout()
+                self.h2h_canvas.draw()
+                self.h2h_container.show()
+            else:
+                self.h2h_container.hide()
 
     def _update_h2h_graph(self):
         if not self.h2h_button.isChecked():
