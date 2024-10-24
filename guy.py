@@ -114,28 +114,18 @@ class PredictorGUI(QMainWindow):
 
     def _setup_predictions_tab(self, tab):
         layout = QVBoxLayout(tab)
-        
-        # Match input section
+    
+        # Sezione input giornata
         input_group = QWidget()
         input_layout = QGridLayout(input_group)
         
-        # Home team selection
-        home_label = QLabel("Squadra Casa:")
-        self.home_team_combo = QComboBox()
-        self.home_team_combo.addItems(CURRENT_TEAMS)
-        
-        # Away team selection
-        away_label = QLabel("Squadra Trasferta:")
-        self.away_team_combo = QComboBox()
-        self.away_team_combo.addItems(CURRENT_TEAMS)
-        
-        # Model selection
+        # Selezione modello
         model_label = QLabel("Modello:")
         self.model_combo = QComboBox()
         self.model_combo.addItems(["Ensemble", "Bayesiano", "Monte Carlo"])
         self.model_combo.currentTextChanged.connect(self._update_model_options)
         
-        # Additional model options (initially hidden)
+        # Opzioni aggiuntive modello
         self.bayes_type_label = QLabel("Tipo Bayesiano:")
         self.bayes_type_combo = QComboBox()
         self.bayes_type_combo.addItems(["standard", "draw"])
@@ -150,38 +140,56 @@ class PredictorGUI(QMainWindow):
         self.mc_iterations_label.hide()
         self.mc_iterations_spin.hide()
         
-        input_layout.addWidget(home_label, 0, 0)
-        input_layout.addWidget(self.home_team_combo, 0, 1)
-        input_layout.addWidget(away_label, 1, 0)
-        input_layout.addWidget(self.away_team_combo, 1, 1)
-        input_layout.addWidget(model_label, 2, 0)
-        input_layout.addWidget(self.model_combo, 2, 1)
-        input_layout.addWidget(self.bayes_type_label, 3, 0)
-        input_layout.addWidget(self.bayes_type_combo, 3, 1)
-        input_layout.addWidget(self.mc_iterations_label, 4, 0)
-        input_layout.addWidget(self.mc_iterations_spin, 4, 1)
+        input_layout.addWidget(model_label, 0, 0)
+        input_layout.addWidget(self.model_combo, 0, 1)
+        input_layout.addWidget(self.bayes_type_label, 1, 0)
+        input_layout.addWidget(self.bayes_type_combo, 1, 1)
+        input_layout.addWidget(self.mc_iterations_label, 2, 0)
+        input_layout.addWidget(self.mc_iterations_spin, 2, 1)
+        
+        # Tabella partite
+        matches_group = QGroupBox("Partite della Giornata")
+        matches_layout = QVBoxLayout(matches_group)
+        
+        self.matches_table = QTableWidget()
+        self.matches_table.setColumnCount(2)
+        self.matches_table.setRowCount(10)  # 10 partite per giornata
+        self.matches_table.setHorizontalHeaderLabels(["Squadra Casa", "Squadra Trasferta"])
+        
+        # Popola le celle con ComboBox
+        for row in range(10):
+            home_combo = QComboBox()
+            away_combo = QComboBox()
+            home_combo.addItems(CURRENT_TEAMS)
+            away_combo.addItems(CURRENT_TEAMS)
+            self.matches_table.setCellWidget(row, 0, home_combo)
+            self.matches_table.setCellWidget(row, 1, away_combo)
+        
+        matches_layout.addWidget(self.matches_table)
         
         layout.addWidget(input_group)
+        layout.addWidget(matches_group)
         
-        # Predict button
-        predict_btn = QPushButton("Genera Predizione")
+        # Pulsante predizione
+        predict_btn = QPushButton("Genera Predizioni")
         predict_btn.clicked.connect(self._generate_prediction)
         layout.addWidget(predict_btn)
         
-        # Results section
+        # Sezione risultati
         results_group = QWidget()
         results_layout = QVBoxLayout(results_group)
         
-        # Prediction results table
+        # Tabella risultati predizioni
         self.prediction_table = QTableWidget()
-        self.prediction_table.setColumnCount(4)
+        self.prediction_table.setColumnCount(7)
         self.prediction_table.setHorizontalHeaderLabels([
-            "Risultato", "Probabilità", "Quote Suggerite", "Valore Atteso"
+            "Partita", "1", "X", "2", 
+            "Quote Suggerite (1-X-2)", "Probabilità Più Alta",
+            "Valore Atteso"
         ])
-        
         results_layout.addWidget(self.prediction_table)
         
-        # Additional statistics
+        # Statistiche aggiuntive
         self.stats_text = QTextEdit()
         self.stats_text.setReadOnly(True)
         self.stats_text.setMaximumHeight(100)
@@ -332,21 +340,26 @@ class PredictorGUI(QMainWindow):
 
     def _generate_prediction(self):
         """
-        Genera una nuova predizione basata sulle squadre e il modello selezionati.
+        Genera predizioni per tutte le partite della giornata.
         """
         try:
             if not self.historical_data:
                 raise ValueError("Dati storici non caricati")
-                
-            home_team = self.home_team_combo.currentText()
-            away_team = self.away_team_combo.currentText()
             
-            if home_team == away_team:
-                raise ValueError("Le squadre devono essere diverse")
+            # Raccogli tutte le partite
+            matches = []
+            for row in range(10):
+                home_combo = self.matches_table.cellWidget(row, 0)
+                away_combo = self.matches_table.cellWidget(row, 1)
+                if home_combo and away_combo:
+                    home_team = home_combo.currentText()
+                    away_team = away_combo.currentText()
+                    if home_team == away_team:
+                        raise ValueError(f"Riga {row+1}: Le squadre devono essere diverse")
+                    matches.append((home_team, away_team))
             
+            # Crea il modello appropriato
             model_type = self.model_combo.currentText()
-            
-            # Create appropriate model based on selection
             if model_type == "Bayesiano":
                 bayes_type = self.bayes_type_combo.currentText()
                 model = SerieABayesModelWrapper(CURRENT_TEAMS, model_type=bayes_type)
@@ -356,39 +369,59 @@ class PredictorGUI(QMainWindow):
             else:  # Ensemble
                 model = SerieAEnsembleWrapper(CURRENT_TEAMS)
             
-            # Initialize model with historical data
+            # Inizializza il modello
             model.initialize_model(self.historical_data, decay_factor=0.5)
             
-            # Generate prediction
-            prediction = model.predict_match(home_team, away_team)
+            # Genera predizioni per ogni partita
+            self.prediction_table.setRowCount(len(matches))
+            total_confidence = 0
             
-            # Update prediction table
-            self.prediction_table.setRowCount(3)
-            outcomes = [
-                ("Vittoria Casa", prediction['home_win']),
-                ("Pareggio", prediction['draw']),
-                ("Vittoria Trasferta", prediction['away_win'])
-            ]
-            
-            for i, (outcome, prob) in enumerate(outcomes):
-                self.prediction_table.setItem(i, 0, QTableWidgetItem(outcome))
-                self.prediction_table.setItem(i, 1, QTableWidgetItem(f"{prob:.1%}"))
-                suggested_odds = 1 / prob if prob > 0 else float('inf')
-                self.prediction_table.setItem(i, 2, QTableWidgetItem(f"{suggested_odds:.2f}"))
+            for i, (home_team, away_team) in enumerate(matches):
+                prediction = model.predict_match(home_team, away_team)
                 
-                ev = (suggested_odds * prob - 1) if prob > 0 else 0
-                self.prediction_table.setItem(i, 3, QTableWidgetItem(f"{ev:+.2%}"))
+                # Formatta la stringa della partita
+                match_str = f"{home_team} vs {away_team}"
+                
+                # Calcola le probabilità e le quote
+                probs = [
+                    prediction['home_win'],
+                    prediction['draw'],
+                    prediction['away_win']
+                ]
+                odds = [1/p if p > 0 else float('inf') for p in probs]
+                odds_str = f"{odds[0]:.2f}-{odds[1]:.2f}-{odds[2]:.2f}"
+                
+                # Trova l'esito più probabile
+                outcomes = ['1', 'X', '2']
+                max_prob_idx = probs.index(max(probs))
+                max_prob_str = f"{outcomes[max_prob_idx]} ({probs[max_prob_idx]:.1%})"
+                
+                # Calcola il valore atteso più alto
+                evs = [(odd * prob - 1) for odd, prob in zip(odds, probs)]
+                max_ev = max(evs)
+                
+                # Popola la riga della tabella
+                self.prediction_table.setItem(i, 0, QTableWidgetItem(match_str))
+                self.prediction_table.setItem(i, 1, QTableWidgetItem(f"{probs[0]:.1%}"))
+                self.prediction_table.setItem(i, 2, QTableWidgetItem(f"{probs[1]:.1%}"))
+                self.prediction_table.setItem(i, 3, QTableWidgetItem(f"{probs[2]:.1%}"))
+                self.prediction_table.setItem(i, 4, QTableWidgetItem(odds_str))
+                self.prediction_table.setItem(i, 5, QTableWidgetItem(max_prob_str))
+                self.prediction_table.setItem(i, 6, QTableWidgetItem(f"{max_ev:+.2%}"))
+                
+                total_confidence += prediction.get('confidence', 0)
             
-            # Add additional statistics
+            # Aggiorna statistiche generali
+            avg_confidence = total_confidence / len(matches)
             stats = (
-                f"Statistiche aggiuntive:\n"
-                f"Media goal previsti: {prediction.get('expected_goals', 0):.2f}\n"
-                f"Confidenza predizione: {prediction.get('confidence', 0):.1%}"
+                f"Statistiche giornata:\n"
+                f"Numero partite analizzate: {len(matches)}\n"
+                f"Confidenza media predizioni: {avg_confidence:.1%}"
             )
             self.stats_text.setText(stats)
             
         except Exception as e:
-            QMessageBox.warning(self, "Errore", f"Errore nella generazione della predizione: {str(e)}")
+            QMessageBox.warning(self, "Errore", f"Errore nella generazione delle predizioni: {str(e)}")
 
     def _update_predictions_history(self):
         """
