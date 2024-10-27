@@ -11262,5 +11262,13 @@
         "away_goals": 4,
         "date": "2024-10-27",
         "notes": ""
+    },
+    {
+        "home_team": "Fiorentina",
+        "away_team": "Roma",
+        "home_goals": 5,
+        "away_goals": 1,
+        "date": "2024-10-27",
+        "notes": ""
     }
 ]
