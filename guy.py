@@ -14,8 +14,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QHBoxLayout, QLabel, QComboBox, QSpinBox, 
                            QTextEdit, QPushButton, QTabWidget, QGridLayout,
                            QTableWidget, QTableWidgetItem, QMessageBox,
-                           QScrollArea, QFileDialog, QProgressBar, QGroupBox, QSizePolicy)
-from PyQt6.QtCore import Qt, QTimer
+                           QScrollArea, QFileDialog, QProgressBar, QGroupBox, QSizePolicy, QDateEdit, QLineEdit)
+from PyQt6.QtCore import Qt, QTimer, QDate
 import pandas as pd
 import numpy as np
 from main import PredictionSystem
@@ -57,13 +57,11 @@ class PredictorGUI(QMainWindow):
         analysis_tab = QWidget()
         comparison_tab = QWidget()
         validation_tab = QWidget()
-        backup_tab = QWidget()
         
         tab_widget.addTab(predictions_tab, "Predizioni")
         tab_widget.addTab(analysis_tab, "Analisi Temporale")
         tab_widget.addTab(comparison_tab, "Confronto Modelli")
         tab_widget.addTab(validation_tab, "Validazione")
-        tab_widget.addTab(backup_tab, "Backup")
         tab_widget.addTab(historical_data_tab, "Dati Storici")
         
         # Setup tabs
@@ -72,15 +70,9 @@ class PredictorGUI(QMainWindow):
         self._setup_analysis_tab(analysis_tab)
         self._setup_comparison_tab(comparison_tab)
         self._setup_validation_tab(validation_tab)
-        self._setup_backup_tab(backup_tab)
         
         # Load historical data
         self._load_historical_data()
-        
-        # Setup automatic backup timer (every 24 hours)
-        self.backup_timer = QTimer(self)
-        self.backup_timer.timeout.connect(self._auto_backup)
-        self.backup_timer.start(24 * 60 * 60 * 1000)  # 24 hours in milliseconds
 
         # Configura tutte le tabelle
         self.setup_all_tables()
@@ -237,67 +229,163 @@ class PredictorGUI(QMainWindow):
     def _setup_historical_data_tab(self, tab):
         layout = QVBoxLayout(tab)
         
-        # Controls section
-        controls_group = QWidget()
-        controls_layout = QHBoxLayout(controls_group)
+        # Sezione inserimento nuovi risultati
+        input_group = QGroupBox("Inserisci Nuovi Risultati")
+        input_layout = QGridLayout(input_group)
         
-        # Season selection
-        season_label = QLabel("Stagione:")
+        # Controlli per l'inserimento
+        self.new_match_home = QComboBox()
+        self.new_match_away = QComboBox()
+        self.new_match_home.addItems(CURRENT_TEAMS)
+        self.new_match_away.addItems(CURRENT_TEAMS)
+        
+        self.home_goals_spin = QSpinBox()
+        self.away_goals_spin = QSpinBox()
+        self.home_goals_spin.setRange(0, 10)
+        self.away_goals_spin.setRange(0, 10)
+        
+        self.match_date = QDateEdit()
+        self.match_date.setCalendarPopup(True)
+        self.match_date.setDate(QDate.currentDate())
+        
+        # Campo note
+        self.match_notes = QLineEdit()
+        
+        # Layout per i controlli
+        input_layout.addWidget(QLabel("Squadra Casa:"), 0, 0)
+        input_layout.addWidget(self.new_match_home, 0, 1)
+        input_layout.addWidget(QLabel("Gol Casa:"), 0, 2)
+        input_layout.addWidget(self.home_goals_spin, 0, 3)
+        
+        input_layout.addWidget(QLabel("Squadra Trasferta:"), 1, 0)
+        input_layout.addWidget(self.new_match_away, 1, 1)
+        input_layout.addWidget(QLabel("Gol Trasferta:"), 1, 2)
+        input_layout.addWidget(self.away_goals_spin, 1, 3)
+        
+        input_layout.addWidget(QLabel("Data:"), 2, 0)
+        input_layout.addWidget(self.match_date, 2, 1)
+        
+        input_layout.addWidget(QLabel("Note:"), 3, 0)
+        input_layout.addWidget(self.match_notes, 3, 1, 1, 3)
+        
+        # Pulsante per aggiungere il risultato
+        add_btn = QPushButton("Aggiungi Risultato")
+        add_btn.clicked.connect(self._add_new_result)
+        input_layout.addWidget(add_btn, 4, 0, 1, 4)
+        
+        # Sezione filtri
+        filter_group = QWidget()
+        filter_layout = QHBoxLayout(filter_group)
+        
         self.season_combo = QComboBox()
-        # Add last 5 seasons
-        current_year = datetime.now().year
-        seasons = [f"{year-1}/{year}" for year in range(current_year, current_year-5, -1)]
-        self.season_combo.addItems(seasons)
+        self.season_combo.addItems(["2023-2024"])  # Aggiungi le stagioni necessarie
         
-        # Team filter
-        team_label = QLabel("Squadra:")
         self.historical_team_combo = QComboBox()
         self.historical_team_combo.addItems(["Tutte"] + CURRENT_TEAMS)
         
-        # Update button
-        update_btn = QPushButton("Aggiorna Dati")
-        update_btn.clicked.connect(self._update_historical_data)
+        filter_layout.addWidget(QLabel("Stagione:"))
+        filter_layout.addWidget(self.season_combo)
+        filter_layout.addWidget(QLabel("Squadra:"))
+        filter_layout.addWidget(self.historical_team_combo)
+        filter_layout.addStretch()
         
-        controls_layout.addWidget(season_label)
-        controls_layout.addWidget(self.season_combo)
-        controls_layout.addWidget(team_label)
-        controls_layout.addWidget(self.historical_team_combo)
-        controls_layout.addWidget(update_btn)
-        controls_layout.addStretch()
+        # Tabella dati storici
+        history_group = QGroupBox("Dati Storici")
+        history_layout = QVBoxLayout(history_group)
         
-        layout.addWidget(controls_group)
-        
-        # Historical data table
         self.historical_table = QTableWidget()
-        self.historical_table.setColumnCount(6)
+        self.historical_table.setColumnCount(7)
         self.historical_table.setHorizontalHeaderLabels([
             "Data", "Squadra Casa", "Squadra Trasferta", 
-            "Goal Casa", "Goal Trasferta", "Risultato"
+            "Gol Casa", "Gol Trasferta", "Risultato", "Note"
         ])
         
-        layout.addWidget(self.historical_table)
+        history_layout.addWidget(self.historical_table)
         
-        # Statistics section
+        # Sezione statistiche
         stats_group = QWidget()
-        stats_layout = QGridLayout(stats_group)
+        stats_layout = QHBoxLayout(stats_group)
         
-        # Add various statistics labels
         self.total_matches_label = QLabel("Partite Totali: 0")
         self.home_wins_label = QLabel("Vittorie Casa: 0")
         self.away_wins_label = QLabel("Vittorie Trasferta: 0")
         self.draws_label = QLabel("Pareggi: 0")
-        self.avg_goals_label = QLabel("Media Goal: 0")
+        self.avg_goals_label = QLabel("Media Goal: 0.00")
         
-        stats_layout.addWidget(self.total_matches_label, 0, 0)
-        stats_layout.addWidget(self.home_wins_label, 0, 1)
-        stats_layout.addWidget(self.away_wins_label, 1, 0)
-        stats_layout.addWidget(self.draws_label, 1, 1)
-        stats_layout.addWidget(self.avg_goals_label, 2, 0)
+        stats_layout.addWidget(self.total_matches_label)
+        stats_layout.addWidget(self.home_wins_label)
+        stats_layout.addWidget(self.away_wins_label)
+        stats_layout.addWidget(self.draws_label)
+        stats_layout.addWidget(self.avg_goals_label)
         
+        # Aggiungi i widget al layout principale
+        layout.addWidget(input_group)
+        layout.addWidget(filter_group)
+        layout.addWidget(history_group)
         layout.addWidget(stats_group)
         
-        # Initialize the table with data
-        self._update_historical_data()
+        # Connetti i segnali per l'aggiornamento
+        self.season_combo.currentTextChanged.connect(self._update_historical_data)
+        self.historical_team_combo.currentTextChanged.connect(self._update_historical_data)
+
+    def _add_new_result(self):
+        """Aggiunge un nuovo risultato ai dati storici."""
+        # Validazione base
+        home_team = self.new_match_home.currentText()
+        away_team = self.new_match_away.currentText()
+        
+        if home_team == away_team:
+            QMessageBox.warning(
+                self, 
+                "Errore", 
+                "La squadra di casa e quella in trasferta non possono essere uguali."
+            )
+            return
+        
+        # Preparazione del nuovo risultato
+        new_result = {
+            "home_team": home_team,
+            "away_team": away_team,
+            "home_goals": self.home_goals_spin.value(),
+            "away_goals": self.away_goals_spin.value(),
+            "date": self.match_date.date().toString("yyyy-MM-dd"),
+            "notes": self.match_notes.text().strip()
+        }
+        
+        try:
+            # Carica i dati esistenti
+            with open(self.historical_data_path, 'r') as f:
+                data = json.load(f)
+            
+            # Aggiungi il nuovo risultato
+            data.append(new_result)
+            
+            # Salva i dati aggiornati
+            with open(self.historical_data_path, 'w') as f:
+                json.dump(data, f, indent=4)
+            
+            # Aggiorna i dati in memoria e la visualizzazione
+            self.historical_data = data
+            self._update_historical_data()
+            
+            # Reset dei controlli
+            self.home_goals_spin.setValue(0)
+            self.away_goals_spin.setValue(0)
+            self.match_date.setDate(QDate.currentDate())
+            self.match_notes.clear()
+            
+            QMessageBox.information(
+                self, 
+                "Successo", 
+                "Risultato aggiunto correttamente."
+            )
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self, 
+                "Errore", 
+                f"Errore durante il salvataggio dei dati: {str(e)}"
+            )
 
     def _update_historical_data(self):
         """
@@ -365,6 +453,9 @@ class PredictorGUI(QMainWindow):
             if not self.historical_data:
                 raise ValueError("Dati storici non caricati")
             
+            print("\n=== Debug Info ===")
+            print(f"Dati storici disponibili: {len(self.historical_data)} partite")
+            
             # Raccogli tutte le partite
             matches = []
             selected_rows = self.matches_count_spin.value()
@@ -381,8 +472,12 @@ class PredictorGUI(QMainWindow):
             if not matches:
                 raise ValueError("Inserire almeno una partita")
             
+            print(f"\nPartite da analizzare: {matches}")
+
             # Crea il modello appropriato
             model_type = self.model_combo.currentText()
+            print(f"\nTipo di modello selezionato: {model_type}")
+
             if model_type == "Bayesiano":
                 bayes_type = self.bayes_type_combo.currentText()
                 model = SerieABayesModelWrapper(CURRENT_TEAMS, model_type=bayes_type)
@@ -398,10 +493,13 @@ class PredictorGUI(QMainWindow):
             # Genera predizioni per ogni partita
             self.prediction_table.setRowCount(len(matches))
             total_confidence = 0
+
+            print("\n=== Analisi Partite ===")
             
             for i, (home_team, away_team) in enumerate(matches):
                 prediction = model.predict_match(home_team, away_team)
-                
+                print(f"Predizione raw: {prediction}")
+
                 # Formatta la stringa della partita
                 match_str = f"{home_team} vs {away_team}"
                 
@@ -411,7 +509,21 @@ class PredictorGUI(QMainWindow):
                     prediction['draw'],
                     prediction['away_win']
                 ]
-                odds = [1/p if p > 0 else float('inf') for p in probs]
+                print(f"Probabilità estratte: {probs}")
+
+                 # Assicuriamoci che le probabilità siano numeri validi
+                probs = [float(p) if p is not None else 0.0 for p in probs]
+                print(f"Probabilità convertite: {probs}")
+
+                # Calcolo quote con controllo per divisione per zero
+                odds = []
+                for p in probs:
+                    if p > 0.01:  # Soglia minima per evitare quote irrealistiche
+                        odds.append(1/p)
+                    else:
+                        odds.append(100.0)  # Quota massima per probabilità molto basse
+                print(f"Quote calcolate: {odds}")
+
                 odds_str = f"{odds[0]:.2f}-{odds[1]:.2f}-{odds[2]:.2f}"
                 
                 # Trova l'esito più probabile
@@ -419,10 +531,32 @@ class PredictorGUI(QMainWindow):
                 max_prob_idx = probs.index(max(probs))
                 max_prob_str = f"{outcomes[max_prob_idx]} ({probs[max_prob_idx]:.1%})"
                 
-                # Calcola il valore atteso più alto
-                evs = [(odd * prob - 1) for odd, prob in zip(odds, probs)]
+                evs = []
+                for odd, prob in zip(odds, probs):
+                    if prob > 0 and odd > 1.0:
+                        ev = (odd * prob) - 1  # Formula EV corretta
+                        evs.append(ev)
+                    else:
+                        evs.append(-1.0)  # Valore negativo per quote/prob invalide
+                print(f"Valori attesi (EV): {evs}")
+
                 max_ev = max(evs)
-                
+                print(f"EV massimo: {max_ev}")
+
+                # Calcola la confidenza della predizione
+                confidence = prediction.get('confidence', 0.0)
+                print(f"Confidenza originale: {confidence}")
+
+                if isinstance(confidence, (int, float)):
+                    total_confidence += confidence
+                else:
+                    # Se la confidenza non è un numero, usa una metrica alternativa
+                    # Per esempio, la differenza tra la probabilità più alta e quella più bassa
+                    confidence = max(probs) - min(probs)
+                    total_confidence += confidence
+                print(f"Confidenza utilizzata: {confidence}")
+                print(f"Total confidence accumulata: {total_confidence}")
+
                 # Popola la riga della tabella
                 self.prediction_table.setItem(i, 0, QTableWidgetItem(match_str))
                 self.prediction_table.setItem(i, 1, QTableWidgetItem(f"{probs[0]:.1%}"))
@@ -434,8 +568,15 @@ class PredictorGUI(QMainWindow):
                 
                 total_confidence += prediction.get('confidence', 0)
             
+            # Calcola la confidenza media solo se abbiamo partite valide
+            if matches:
+                avg_confidence = total_confidence / len(matches)
+                print(f"\nConfidenza media finale: {avg_confidence}")
+            else:
+                avg_confidence = 0.0
+
             # Aggiorna statistiche generali
-            avg_confidence = total_confidence / len(matches)
+            
             stats = (
                 f"Statistiche giornata:\n"
                 f"Numero partite analizzate: {len(matches)}\n"
@@ -444,6 +585,8 @@ class PredictorGUI(QMainWindow):
             self.stats_text.setText(stats)
             
         except Exception as e:
+            print(f"\nERRORE: {str(e)}")
+            print(f"Tipo di errore: {type(e)}")
             QMessageBox.warning(self, "Errore", f"Errore nella generazione delle predizioni: {str(e)}")
 
     def _update_predictions_history(self):
@@ -706,14 +849,14 @@ class PredictorGUI(QMainWindow):
         
         # Date range selection
         start_date_label = QLabel("Data Inizio:")
-        self.validation_start_date = QTextEdit()
-        self.validation_start_date.setMaximumHeight(30)
-        self.validation_start_date.setPlaceholderText("YYYY-MM-DD")
+        self.validation_start_date = QDateEdit()
+        self.validation_start_date.setCalendarPopup(True)
+        self.validation_start_date.setDate(QDate.currentDate())
         
         end_date_label = QLabel("Data Fine:")
-        self.validation_end_date = QTextEdit()
-        self.validation_end_date.setMaximumHeight(30)
-        self.validation_end_date.setPlaceholderText("YYYY-MM-DD")
+        self.validation_end_date = QDateEdit()
+        self.validation_end_date.setCalendarPopup(True)
+        self.validation_end_date.setDate(QDate.currentDate())
         
         validate_btn = QPushButton("Valida Predizioni")
         validate_btn.clicked.connect(self._validate_predictions)
@@ -739,82 +882,6 @@ class PredictorGUI(QMainWindow):
         self.validation_stats_label = QLabel()
         layout.addWidget(self.validation_stats_label)
 
-    def _setup_backup_tab(self, tab):
-        layout = QVBoxLayout(tab)
-        
-        # Backup configuration
-        config_group = QWidget()
-        config_layout = QGridLayout(config_group)
-        
-        # Backup directory selection
-        dir_label = QLabel("Directory Backup:")
-        self.backup_dir = QTextEdit()
-        self.backup_dir.setMaximumHeight(30)
-        self.backup_dir.setPlaceholderText("Seleziona directory...")
-        
-        browse_btn = QPushButton("Sfoglia")
-        browse_btn.clicked.connect(self._browse_backup_dir)
-        
-        config_layout.addWidget(dir_label, 0, 0)
-        config_layout.addWidget(self.backup_dir, 0, 1)
-        config_layout.addWidget(browse_btn, 0, 2)
-        
-        # Backup frequency
-        freq_label = QLabel("Frequenza Backup:")
-        self.backup_freq_combo = QComboBox()
-        self.backup_freq_combo.addItems(["Giornaliero", "Settimanale", "Mensile"])
-        
-        config_layout.addWidget(freq_label, 1, 0)
-        config_layout.addWidget(self.backup_freq_combo, 1, 1)
-        
-        layout.addWidget(config_group)
-        
-        # Manual backup button
-        backup_btn = QPushButton("Esegui Backup Manuale")
-        backup_btn.clicked.connect(self._manual_backup)
-        layout.addWidget(backup_btn)
-        
-        # Backup history
-        history_label = QLabel("Cronologia Backup:")
-        self.backup_history = QTextEdit()
-        self.backup_history.setReadOnly(True)
-        
-        layout.addWidget(history_label)
-        layout.addWidget(self.backup_history)
-        
-        # Progress bar
-        self.backup_progress = QProgressBar()
-        layout.addWidget(self.backup_progress)
-
-        # Legenda
-        legend_group = QGroupBox("Guida all'uso del backup")
-        legend_layout = QVBoxLayout(legend_group)
-        
-        legend_text = QLabel(
-            """
-            <b>Come utilizzare la funzione di backup:</b>
-            <ol>
-            <li>Seleziona la directory di destinazione usando il pulsante 'Sfoglia'</li>
-            <li>Scegli la frequenza desiderata per i backup automatici dal menu a tendina</li>
-            <li>Per eseguire un backup immediato, clicca su 'Esegui Backup Manuale'</li>
-            </ol>
-            
-            <b>Note importanti:</b>
-            <ul>
-            <li>La cronologia mostra data e stato dei backup precedenti</li>
-            <li>La barra di progresso indica lo stato del backup in corso</li>
-            <li>I backup automatici verranno eseguiti in base alla frequenza selezionata</li>
-            </ul>
-            """
-        )
-        legend_text.setTextFormat(Qt.TextFormat.RichText)
-        legend_text.setWordWrap(True)
-        legend_layout.addWidget(legend_text)
-        
-        layout.addWidget(legend_group)
-
-        
-        layout.addStretch()
 
     def _update_analysis_graphs(self):
         team = self.analysis_team_combo.currentText()
@@ -1112,8 +1179,8 @@ class PredictorGUI(QMainWindow):
 
     def _validate_predictions(self):
         try:
-            start_date = datetime.strptime(self.validation_start_date.toPlainText(), '%Y-%m-%d')
-            end_date = datetime.strptime(self.validation_end_date.toPlainText(), '%Y-%m-%d')
+            start_date = datetime.strptime(self.validation_start_date.date().toString("yyyy-MM-dd"), '%Y-%m-%d')
+            end_date = datetime.strptime(self.validation_end_date.date().toString("yyyy-MM-dd"), '%Y-%m-%d')
             
             # Get matches in date range
             matches = [
@@ -1180,86 +1247,6 @@ class PredictorGUI(QMainWindow):
             
         except Exception as e:
             QMessageBox.warning(self, "Errore", str(e))
-
-    def _browse_backup_dir(self):
-        dir_path = QFileDialog.getExistingDirectory(self, "Seleziona Directory Backup")
-        if dir_path:
-            self.backup_dir.setText(dir_path)
-
-    def _manual_backup(self):
-        try:
-            if not self.backup_dir.toPlainText():
-                raise ValueError("Seleziona una directory di backup")
-            
-            self._perform_backup()
-            QMessageBox.information(self, "Successo", "Backup completato con successo")
-            
-        except Exception as e:
-            QMessageBox.warning(self, "Errore", str(e))
-
-    def _auto_backup(self):
-        try:
-            if not self.backup_dir.toPlainText():
-                return  # Skip if no backup directory configured
-                
-            frequency = self.backup_freq_combo.currentText()
-            last_backup_file = os.path.join(self.backup_dir.toPlainText(), "last_backup.txt")
-            
-            if os.path.exists(last_backup_file):
-                with open(last_backup_file, 'r') as f:
-                    last_backup = datetime.strptime(f.read().strip(), '%Y-%m-%d')
-                
-                # Check if backup is needed based on frequency
-                days_since_backup = (datetime.now() - last_backup).days
-                
-                if (frequency == "Giornaliero" and days_since_backup < 1) or \
-                   (frequency == "Settimanale" and days_since_backup < 7) or \
-                   (frequency == "Mensile" and days_since_backup < 30):
-                    return
-            
-            self._perform_backup()
-            
-        except Exception as e:
-            # Log error instead of showing message box for automatic backup
-            print(f"Errore nel backup automatico: {str(e)}")
-
-    def _perform_backup(self):
-        backup_dir = self.backup_dir.toPlainText()
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        
-        # Create backup subdirectory
-        backup_path = os.path.join(backup_dir, f"backup_{timestamp}")
-        os.makedirs(backup_path, exist_ok=True)
-        
-        # Initialize progress bar
-        self.backup_progress.setValue(0)
-        self.backup_progress.setMaximum(3)  # Number of steps
-        
-        # 1. Backup historical data
-        current_directory = os.path.dirname(__file__)
-        historical_data_path = os.path.join(current_directory, 'input_data', 'historical_data.json')
-        shutil.copy2(historical_data_path, backup_path)
-        self.backup_progress.setValue(1)
-        
-        # 2. Backup prediction history
-        prediction_history_path = os.path.join(backup_path, 'prediction_history.json')
-        with open(prediction_history_path, 'w') as f:
-            json.dump(self.prediction_history, f, indent=2)
-        self.backup_progress.setValue(2)
-        
-        # 3. Backup validation results
-        validation_results_path = os.path.join(backup_path, 'validation_results.json')
-        with open(validation_results_path, 'w') as f:
-            json.dump(self.validation_results, f, indent=2)
-        self.backup_progress.setValue(3)
-        
-        # Update last backup time
-        with open(os.path.join(backup_dir, "last_backup.txt"), 'w') as f:
-            f.write(datetime.now().strftime('%Y-%m-%d'))
-        
-        # Update backup history
-        history_text = f"Backup eseguito il {timestamp}\n"
-        self.backup_history.append(history_text)
 
     def _get_actual_result(self, match):
         if match['home_goals'] > match['away_goals']:
