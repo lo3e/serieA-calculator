@@ -534,7 +534,7 @@ class PredictorGUI(QMainWindow):
                 evs = []
                 for odd, prob in zip(odds, probs):
                     if prob > 0 and odd > 1.0:
-                        ev = (odd * prob) - 1  # Formula EV corretta
+                        ev = (odd - 1) * prob  # Formula EV corretta
                         evs.append(ev)
                     else:
                         evs.append(-1.0)  # Valore negativo per quote/prob invalide
@@ -544,17 +544,15 @@ class PredictorGUI(QMainWindow):
                 print(f"EV massimo: {max_ev}")
 
                 # Calcola la confidenza della predizione
-                confidence = prediction.get('confidence', 0.0)
-                print(f"Confidenza originale: {confidence}")
+                confidence = prediction.get('confidence')
 
-                if isinstance(confidence, (int, float)):
-                    total_confidence += confidence
-                else:
-                    # Se la confidenza non è un numero, usa una metrica alternativa
-                    # Per esempio, la differenza tra la probabilità più alta e quella più bassa
+                if confidence is None:
                     confidence = max(probs) - min(probs)
-                    total_confidence += confidence
-                print(f"Confidenza utilizzata: {confidence}")
+                    print(f"Confidenza calcolata dalla differenza delle probabilità: {confidence}")
+                else:
+                    print(f"Confidenza fornita dal modello: {confidence}")
+                
+                total_confidence += confidence
                 print(f"Total confidence accumulata: {total_confidence}")
 
                 # Popola la riga della tabella
@@ -565,8 +563,6 @@ class PredictorGUI(QMainWindow):
                 self.prediction_table.setItem(i, 4, QTableWidgetItem(odds_str))
                 self.prediction_table.setItem(i, 5, QTableWidgetItem(max_prob_str))
                 self.prediction_table.setItem(i, 6, QTableWidgetItem(f"{max_ev:+.2%}"))
-                
-                total_confidence += prediction.get('confidence', 0)
             
             # Calcola la confidenza media solo se abbiamo partite valide
             if matches:
