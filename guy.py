@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QHBoxLayout, QLabel, QComboBox, QSpinBox, 
                            QTextEdit, QPushButton, QTabWidget, QGridLayout,
                            QTableWidget, QTableWidgetItem, QMessageBox,
-                           QScrollArea, QFileDialog, QProgressBar, QGroupBox, QSizePolicy, QDateEdit, QLineEdit)
+                           QScrollArea, QFileDialog, QProgressBar, QGroupBox, QSizePolicy, QDateEdit, QLineEdit, QDoubleSpinBox)
 from PyQt6.QtCore import Qt, QTimer, QDate
 import pandas as pd
 import numpy as np
@@ -155,9 +155,10 @@ class PredictorGUI(QMainWindow):
         matches_layout.addLayout(matches_controls)
 
         self.matches_table = QTableWidget()
-        self.matches_table.setColumnCount(2)
+        self.matches_table.setColumnCount(5)
         self.matches_table.setRowCount(10)  # 10 partite per giornata
-        self.matches_table.setHorizontalHeaderLabels(["Squadra Casa", "Squadra Trasferta"])
+        self.matches_table.setHorizontalHeaderLabels(["Squadra Casa", "Squadra Trasferta", 
+            "Quota 1", "Quota X", "Quota 2"])
         
         # Popola le celle con ComboBox
         for row in range(10):
@@ -165,8 +166,24 @@ class PredictorGUI(QMainWindow):
             away_combo = QComboBox()
             home_combo.addItems(CURRENT_TEAMS)
             away_combo.addItems(CURRENT_TEAMS)
+
+            # Add SpinBoxes for odds
+            odds_1_spin = QDoubleSpinBox()
+            odds_x_spin = QDoubleSpinBox()
+            odds_2_spin = QDoubleSpinBox()
+
+            # Configure odds spinboxes
+            for odds_spin in [odds_1_spin, odds_x_spin, odds_2_spin]:
+                odds_spin.setRange(1.01, 50.0)  # Reasonable range for odds
+                odds_spin.setDecimals(2)
+                odds_spin.setValue(1.91)  # Default value
+                odds_spin.setSingleStep(0.05)
+
             self.matches_table.setCellWidget(row, 0, home_combo)
             self.matches_table.setCellWidget(row, 1, away_combo)
+            self.matches_table.setCellWidget(row, 2, odds_1_spin)
+            self.matches_table.setCellWidget(row, 3, odds_x_spin)
+            self.matches_table.setCellWidget(row, 4, odds_2_spin)
         
         matches_layout.addWidget(self.matches_table)
         
@@ -184,11 +201,12 @@ class PredictorGUI(QMainWindow):
         
         # Tabella risultati predizioni
         self.prediction_table = QTableWidget()
-        self.prediction_table.setColumnCount(7)
+        self.prediction_table.setColumnCount(10)
         self.prediction_table.setHorizontalHeaderLabels([
             "Partita", "1", "X", "2", 
-            "Quote Suggerite (1-X-2)", "Probabilità Più Alta",
-            "Valore Atteso"
+            "Quote Suggerite (1-X-2)", "Quote Book (1-X-2)",
+            "EV (1)", "EV (X)", "EV (2)",
+            "Miglior EV"
         ])
         results_layout.addWidget(self.prediction_table)
         
@@ -458,21 +476,34 @@ class PredictorGUI(QMainWindow):
             
             # Raccogli tutte le partite
             matches = []
+            bookie_odds = []
             selected_rows = self.matches_count_spin.value()
+
             for row in range(selected_rows):
                 home_combo = self.matches_table.cellWidget(row, 0)
                 away_combo = self.matches_table.cellWidget(row, 1)
-                if home_combo and away_combo:
+                odds_1_spin = self.matches_table.cellWidget(row, 2)
+                odds_x_spin = self.matches_table.cellWidget(row, 3)
+                odds_2_spin = self.matches_table.cellWidget(row, 4)
+
+                if all([home_combo, away_combo, odds_1_spin, odds_x_spin, odds_2_spin]):
                     home_team = home_combo.currentText()
                     away_team = away_combo.currentText()
                     if home_team == away_team:
                         raise ValueError(f"Riga {row+1}: Le squadre devono essere diverse")
+                    
                     matches.append((home_team, away_team))
+                    bookie_odds.append([
+                        odds_1_spin.value(),
+                        odds_x_spin.value(),
+                        odds_2_spin.value()
+                    ])
             
             if not matches:
                 raise ValueError("Inserire almeno una partita")
             
             print(f"\nPartite da analizzare: {matches}")
+            print(f"Quote bookmaker: {bookie_odds}")
 
             # Crea il modello appropriato
             model_type = self.model_combo.currentText()
@@ -496,7 +527,7 @@ class PredictorGUI(QMainWindow):
 
             print("\n=== Analisi Partite ===")
             
-            for i, (home_team, away_team) in enumerate(matches):
+            for i, ((home_team, away_team), match_odds) in enumerate(zip(matches, bookie_odds)):
                 prediction = model.predict_match(home_team, away_team)
                 print(f"Predizione raw: {prediction}")
 
@@ -516,32 +547,32 @@ class PredictorGUI(QMainWindow):
                 print(f"Probabilità convertite: {probs}")
 
                 # Calcolo quote con controllo per divisione per zero
-                odds = []
+                model_odds = []
                 for p in probs:
                     if p > 0.01:  # Soglia minima per evitare quote irrealistiche
-                        odds.append(1/p)
+                        model_odds.append(1/p)
                     else:
-                        odds.append(100.0)  # Quota massima per probabilità molto basse
-                print(f"Quote calcolate: {odds}")
+                        model_odds.append(100.0)  # Quota massima per probabilità molto basse
+                print(f"Quote calcolate: {model_odds}")
 
-                odds_str = f"{odds[0]:.2f}-{odds[1]:.2f}-{odds[2]:.2f}"
-                
+                model_odds_str = f"{model_odds[0]:.2f}-{model_odds[1]:.2f}-{model_odds[2]:.2f}"
+                bookie_odds_str = f"{match_odds[0]:.2f}-{match_odds[1]:.2f}-{match_odds[2]:.2f}"
+
                 # Trova l'esito più probabile
                 outcomes = ['1', 'X', '2']
                 max_prob_idx = probs.index(max(probs))
                 max_prob_str = f"{outcomes[max_prob_idx]} ({probs[max_prob_idx]:.1%})"
                 
                 evs = []
-                for odd, prob in zip(odds, probs):
-                    if prob > 0 and odd > 1.0:
-                        ev = (odd - 1) * prob  # Formula EV corretta
-                        evs.append(ev)
-                    else:
-                        evs.append(-1.0)  # Valore negativo per quote/prob invalide
-                print(f"Valori attesi (EV): {evs}")
+                for prob, odd in zip(probs, match_odds):
+                    ev = (prob * odd) - 1
+                    evs.append(ev)
+                print(f"EV calcolati: {evs}")
 
-                max_ev = max(evs)
-                print(f"EV massimo: {max_ev}")
+                # Trova il miglior EV
+                max_ev_idx = evs.index(max(evs))
+                outcomes = ['1', 'X', '2']
+                best_ev_str = f"{outcomes[max_ev_idx]} ({evs[max_ev_idx]:+.2%})"
 
                 # Calcola la confidenza della predizione
                 confidence = prediction.get('confidence')
@@ -560,9 +591,12 @@ class PredictorGUI(QMainWindow):
                 self.prediction_table.setItem(i, 1, QTableWidgetItem(f"{probs[0]:.1%}"))
                 self.prediction_table.setItem(i, 2, QTableWidgetItem(f"{probs[1]:.1%}"))
                 self.prediction_table.setItem(i, 3, QTableWidgetItem(f"{probs[2]:.1%}"))
-                self.prediction_table.setItem(i, 4, QTableWidgetItem(odds_str))
-                self.prediction_table.setItem(i, 5, QTableWidgetItem(max_prob_str))
-                self.prediction_table.setItem(i, 6, QTableWidgetItem(f"{max_ev:+.2%}"))
+                self.prediction_table.setItem(i, 4, QTableWidgetItem(model_odds_str))
+                self.prediction_table.setItem(i, 5, QTableWidgetItem(bookie_odds_str))
+                self.prediction_table.setItem(i, 6, QTableWidgetItem(f"{evs[0]:+.2%}"))
+                self.prediction_table.setItem(i, 7, QTableWidgetItem(f"{evs[1]:+.2%}"))
+                self.prediction_table.setItem(i, 8, QTableWidgetItem(f"{evs[2]:+.2%}"))
+                self.prediction_table.setItem(i, 9, QTableWidgetItem(best_ev_str))
             
             # Calcola la confidenza media solo se abbiamo partite valide
             if matches:
