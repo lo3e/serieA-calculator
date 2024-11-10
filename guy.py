@@ -23,6 +23,7 @@ from models.base_model import BaseModel
 from models.bayes_model import SerieABayesModelWrapper
 from models.mc_wrapper import SerieAMonteCarloWrapper
 from models.ensemble_wrapper import SerieAEnsembleWrapper
+from models.nn_wrapper import SerieANeuralNetworkWrapper
 from utils.data_loader import load_historical_data
 from config.teams import CURRENT_TEAMS
 
@@ -114,7 +115,7 @@ class PredictorGUI(QMainWindow):
         # Selezione modello
         model_label = QLabel("Modello:")
         self.model_combo = QComboBox()
-        self.model_combo.addItems(["Ensemble", "Bayesiano", "Monte Carlo"])
+        self.model_combo.addItems(["Ensemble", "Bayesiano", "Monte Carlo", "Neural Network"])
         self.model_combo.currentTextChanged.connect(self._update_model_options)
         
         # Opzioni aggiuntive modello
@@ -176,7 +177,7 @@ class PredictorGUI(QMainWindow):
             for odds_spin in [odds_1_spin, odds_x_spin, odds_2_spin]:
                 odds_spin.setRange(1.01, 50.0)  # Reasonable range for odds
                 odds_spin.setDecimals(2)
-                odds_spin.setValue(1.91)  # Default value
+                odds_spin.setValue(1.90)  # Default value
                 odds_spin.setSingleStep(0.05)
 
             self.matches_table.setCellWidget(row, 0, home_combo)
@@ -515,11 +516,16 @@ class PredictorGUI(QMainWindow):
             elif model_type == "Monte Carlo":
                 n_simulations = self.mc_iterations_spin.value()
                 model = SerieAMonteCarloWrapper(CURRENT_TEAMS, n_simulations=n_simulations)
+            elif model_type == "Neural Network":
+                model = SerieANeuralNetworkWrapper(CURRENT_TEAMS)
             else:  # Ensemble
                 model = SerieAEnsembleWrapper(CURRENT_TEAMS)
             
             # Inizializza il modello
-            model.initialize_model(self.historical_data, decay_factor=0.5)
+            if model_type == "Neural Network":
+                model.initialize_model(self.historical_data)
+            else:
+                model.initialize_model(self.historical_data, decay_factor=0.5)
             
             # Genera predizioni per ogni partita
             self.prediction_table.setRowCount(len(matches))
@@ -1149,18 +1155,23 @@ class PredictorGUI(QMainWindow):
 
     def _compare_models(self):
         # Run predictions with all models on a test set
-        test_matches = self._get_recent_matches(10)  # Get last 10 matches for testing
+        test_matches = self._get_recent_matches(100)  # Get last 10 matches for testing
         
         models = {
             'bayes_std': SerieABayesModelWrapper(CURRENT_TEAMS, model_type='standard'),
             'bayes_draw': SerieABayesModelWrapper(CURRENT_TEAMS, model_type='draw'),
             'montecarlo': SerieAMonteCarloWrapper(CURRENT_TEAMS, n_simulations=10000),
+            'nn': SerieANeuralNetworkWrapper(CURRENT_TEAMS),
             'ensemble': SerieAEnsembleWrapper(CURRENT_TEAMS)
         }
         
         results = {}
         for model_name, model in models.items():
-            model.initialize_model(self.historical_data, decay_factor=0.5)
+            if model_name == "nn":
+                model.initialize_model(self.historical_data)
+            else:
+                model.initialize_model(self.historical_data, decay_factor=0.5)
+
             predictions = []
             
             for match in test_matches:
@@ -1226,6 +1237,7 @@ class PredictorGUI(QMainWindow):
                 'bayes_std': SerieABayesModelWrapper(CURRENT_TEAMS, model_type='standard'),
                 'bayes_draw': SerieABayesModelWrapper(CURRENT_TEAMS, model_type='draw'),
                 'montecarlo': SerieAMonteCarloWrapper(CURRENT_TEAMS, n_simulations=10000),
+                'nn': SerieANeuralNetworkWrapper(CURRENT_TEAMS),
                 'ensemble': SerieAEnsembleWrapper(CURRENT_TEAMS)
             }
             
@@ -1237,7 +1249,10 @@ class PredictorGUI(QMainWindow):
                     match for match in self.historical_data
                     if datetime.strptime(match['date'], '%Y-%m-%d') < start_date
                 ]
-                model.initialize_model(historical_data_subset, decay_factor=0.5)
+                if model_name == "nn":
+                    model.initialize_model(historical_data_subset)
+                else:
+                    model.initialize_model(historical_data_subset, decay_factor=0.5)
                 
                 for match in matches:
                     pred = model.predict_match(match['home_team'], match['away_team'])

@@ -5,6 +5,7 @@ from models.base_model import BaseModel
 from models.bayes_model import SerieABayesModelWrapper
 from models.mc_wrapper import SerieAMonteCarloWrapper
 from models.ensemble_wrapper import SerieAEnsembleWrapper
+from models.nn_wrapper import SerieANeuralNetworkWrapper
 from utils.data_loader import load_historical_data
 from config.teams import CURRENT_TEAMS
 
@@ -72,7 +73,7 @@ def get_argument_parser():
     parser.add_argument(
         '--model', 
         type=str, 
-        choices=['bayes', 'montecarlo', 'ensemble', 'all'],
+        choices=['bayes', 'montecarlo', 'nn', 'ensemble', 'all'],
         default='bayes',
         help='Modello da utilizzare per le predizioni (default: bayes)'
     )
@@ -163,6 +164,10 @@ def main():
             )
             monte_carlo_model.initialize_model(historical_data, decay_factor=0.5)
             prediction_system.register_model('montecarlo', monte_carlo_model)
+        if args.model in ['nn', 'all']:
+            nn_model = SerieANeuralNetworkWrapper(CURRENT_TEAMS)
+            nn_model.initialize_model(historical_data)
+            prediction_system.register_model('nn', nn_model)
         if args.model in ['ensemble', 'all']:
             ensemble_model = SerieAEnsembleWrapper(CURRENT_TEAMS)
             ensemble_model.initialize_model(historical_data, decay_factor=0.5)
