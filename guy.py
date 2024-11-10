@@ -3,6 +3,7 @@ import os
 import json
 from datetime import datetime, timedelta
 import shutil
+import math
 from typing import List, Tuple, Dict
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -569,16 +570,36 @@ class PredictorGUI(QMainWindow):
                 max_prob_idx = probs.index(max(probs))
                 max_prob_str = f"{outcomes[max_prob_idx]} ({probs[max_prob_idx]:.1%})"
                 
-                evs = []
-                for prob, odd in zip(probs, match_odds):
-                    ev = (prob * odd) - 1
-                    evs.append(ev)
-                print(f"EV calcolati: {evs}")
+                #evs = []
+                #for prob, odd in zip(probs, match_odds):
+                #    ev = (prob * odd) - 1
+                #    evs.append(ev)
+                #print(f"EV calcolati: {evs}")
 
                 # Trova il miglior EV
-                max_ev_idx = evs.index(max(evs))
-                outcomes = ['1', 'X', '2']
-                best_ev_str = f"{outcomes[max_ev_idx]} ({evs[max_ev_idx]:+.2%})"
+                #max_ev_idx = evs.index(max(evs))
+                #outcomes = ['1', 'X', '2']
+                #best_ev_str = f"{outcomes[max_ev_idx]} ({evs#[max_ev_idx]:+.2%})"
+
+                evs, confidence_scores = self.calculate_improved_ev(probs, match_odds)
+        
+                # Trova il miglior EV solo se ha confidenza sufficiente
+                valid_evs = [(ev, idx) for idx, (ev, conf) in enumerate(zip(evs, confidence_scores)) 
+                            if conf >= 0.49]
+                
+                if valid_evs:
+                    max_ev, max_ev_idx = max(valid_evs, key=lambda x: x[0])
+                    best_ev_str = f"{outcomes[max_ev_idx]} ({max_ev:+.2%})"
+                else:
+                    best_ev_str = "No valid EV"
+                
+                # Aggiunge indicatori di confidenza alla visualizzazione
+                ev_cells = []
+                for ev, conf in zip(evs, confidence_scores):
+                    if conf >= 0.49:
+                        ev_cells.append(f"{ev:+.2%} (✓)")
+                    else:
+                        ev_cells.append(f"{ev:+.2%} (!)")
 
                 # Calcola la confidenza della predizione
                 confidence = prediction.get('confidence')
@@ -599,9 +620,9 @@ class PredictorGUI(QMainWindow):
                 self.prediction_table.setItem(i, 3, QTableWidgetItem(f"{probs[2]:.1%}"))
                 self.prediction_table.setItem(i, 4, QTableWidgetItem(model_odds_str))
                 self.prediction_table.setItem(i, 5, QTableWidgetItem(bookie_odds_str))
-                self.prediction_table.setItem(i, 6, QTableWidgetItem(f"{evs[0]:+.2%}"))
-                self.prediction_table.setItem(i, 7, QTableWidgetItem(f"{evs[1]:+.2%}"))
-                self.prediction_table.setItem(i, 8, QTableWidgetItem(f"{evs[2]:+.2%}"))
+                self.prediction_table.setItem(i, 6, QTableWidgetItem(ev_cells[0]))
+                self.prediction_table.setItem(i, 7, QTableWidgetItem(ev_cells[1]))
+                self.prediction_table.setItem(i, 8, QTableWidgetItem(ev_cells[2]))
                 self.prediction_table.setItem(i, 9, QTableWidgetItem(best_ev_str))
             
             # Calcola la confidenza media solo se abbiamo partite valide
@@ -624,6 +645,56 @@ class PredictorGUI(QMainWindow):
             print(f"\nERRORE: {str(e)}")
             print(f"Tipo di errore: {type(e)}")
             QMessageBox.warning(self, "Errore", f"Errore nella generazione delle predizioni: {str(e)}")
+
+    def calculate_improved_ev(self, probs, match_odds, confidence_threshold=0.15):
+        """
+        Calcola gli Expected Value con correzioni per quote alte e confidence score.
+        
+        Args:
+            probs: Lista delle probabilità [1, X, 2]
+            match_odds: Lista delle quote del bookmaker [1, X, 2]
+            confidence_threshold: Soglia minima di confidenza
+        
+        Returns:
+            evs: Lista degli EV corretti
+            confidence_scores: Lista dei confidence score
+        """
+        evs = []
+        confidence_scores = []
+        
+        # Calcola la confidenza base (differenza tra prob max e min)
+        base_confidence = max(probs) - min(probs)
+        
+        for idx, (prob, odd) in enumerate(zip(probs, match_odds)):
+            # Calcola il confidence score
+            confidence_score = base_confidence
+            
+            # Penalizza la confidenza per quote molto alte
+            if odd > 3.0:
+                confidence_score *= (3.0 / odd)
+            
+            # Penalizza la confidenza se la probabilità è molto bassa
+            if prob < 0.15:
+                confidence_score *= (prob / 0.15)
+            
+            # Calcola l'EV standard
+            raw_ev = (prob * odd) - 1
+            
+            # Applica correzione logaritmica per quote alte
+            if odd > 3.0:
+                correction_factor = math.log10(3.0) / math.log10(odd)
+                corrected_ev = raw_ev * correction_factor
+            else:
+                corrected_ev = raw_ev
+            
+            # Se la confidenza è sotto la soglia, riduci l'EV
+            if confidence_score < confidence_threshold:
+                corrected_ev *= (confidence_score / confidence_threshold)
+            
+            evs.append(corrected_ev)
+            confidence_scores.append(confidence_score)
+        
+        return evs, confidence_scores
 
     def _update_predictions_history(self):
         """
