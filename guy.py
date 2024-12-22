@@ -24,7 +24,8 @@ from models.base_model import BaseModel
 from models.bayes_model import SerieABayesModelWrapper
 from models.mc_wrapper import SerieAMonteCarloWrapper
 from models.ensemble_wrapper import SerieAEnsembleWrapper
-from models.nn_wrapper import SerieANeuralNetworkWrapper
+#from models.nn_wrapper import SerieANeuralNetworkWrapper
+from models.nn_enhanced_wrapper import SerieAEnhancedNeuralNetworkWrapper
 from utils.data_loader import load_historical_data
 from config.teams import CURRENT_TEAMS
 
@@ -157,35 +158,38 @@ class PredictorGUI(QMainWindow):
         matches_layout.addLayout(matches_controls)
 
         self.matches_table = QTableWidget()
-        self.matches_table.setColumnCount(5)
-        self.matches_table.setRowCount(10)  # 10 partite per giornata
-        self.matches_table.setHorizontalHeaderLabels(["Squadra Casa", "Squadra Trasferta", 
-            "Quota 1", "Quota X", "Quota 2"])
+        self.matches_table.setColumnCount(11)  # Aumentato per includere le nuove quote
+        self.matches_table.setRowCount(10)
+        self.matches_table.setHorizontalHeaderLabels([
+            "Squadra Casa", "Squadra Trasferta", 
+            "Quota 1", "Quota X", "Quota 2",
+            "Quota 1X", "Quota X2", "Quota 12",  # Doppia chance
+            "Quota Goal", "Quota NoGoal",        # Goal/NoGoal
+            "Quota Over 2.5"                     # Over/Under
+        ])
         
-        # Popola le celle con ComboBox
+        # Popola le celle con ComboBox e SpinBox
         for row in range(10):
             home_combo = QComboBox()
             away_combo = QComboBox()
             home_combo.addItems(CURRENT_TEAMS)
             away_combo.addItems(CURRENT_TEAMS)
 
-            # Add SpinBoxes for odds
-            odds_1_spin = QDoubleSpinBox()
-            odds_x_spin = QDoubleSpinBox()
-            odds_2_spin = QDoubleSpinBox()
-
-            # Configure odds spinboxes
-            for odds_spin in [odds_1_spin, odds_x_spin, odds_2_spin]:
-                odds_spin.setRange(1.01, 50.0)  # Reasonable range for odds
+            # Create all odds spinboxes
+            odds_spinboxes = []
+            for i in range(9):  # 9 quote totali
+                odds_spin = QDoubleSpinBox()
+                odds_spin.setRange(1.01, 50.0)
                 odds_spin.setDecimals(2)
-                odds_spin.setValue(1.90)  # Default value
+                odds_spin.setValue(1.90)
                 odds_spin.setSingleStep(0.05)
+                odds_spinboxes.append(odds_spin)
 
+            # Set cell widgets
             self.matches_table.setCellWidget(row, 0, home_combo)
             self.matches_table.setCellWidget(row, 1, away_combo)
-            self.matches_table.setCellWidget(row, 2, odds_1_spin)
-            self.matches_table.setCellWidget(row, 3, odds_x_spin)
-            self.matches_table.setCellWidget(row, 4, odds_2_spin)
+            for i, odds_spin in enumerate(odds_spinboxes):
+                self.matches_table.setCellWidget(row, i + 2, odds_spin)
         
         matches_layout.addWidget(self.matches_table)
         
@@ -201,7 +205,7 @@ class PredictorGUI(QMainWindow):
         results_group = QWidget()
         results_layout = QVBoxLayout(results_group)
         
-        # Tabella risultati predizioni
+        # Tabella risultati predizioni base (1X2)
         self.prediction_table = QTableWidget()
         self.prediction_table.setColumnCount(10)
         self.prediction_table.setHorizontalHeaderLabels([
@@ -211,6 +215,18 @@ class PredictorGUI(QMainWindow):
             "Miglior EV"
         ])
         results_layout.addWidget(self.prediction_table)
+        
+        # Nuova tabella per risultati aggiuntivi
+        self.additional_prediction_table = QTableWidget()
+        self.additional_prediction_table.setColumnCount(9)
+        self.additional_prediction_table.setHorizontalHeaderLabels([
+            "Partita",
+            "1X", "X2", "12",           # Doppia chance
+            "Goal", "NoGoal",           # Goal/NoGoal
+            "Over 2.5", "Under 2.5",    # Over/Under
+            "Miglior EV"
+        ])
+        results_layout.addWidget(self.additional_prediction_table)
         
         # Statistiche aggiuntive
         self.stats_text = QTextEdit()
@@ -467,7 +483,8 @@ class PredictorGUI(QMainWindow):
 
     def _generate_prediction(self):
         """
-        Genera predizioni per tutte le partite della giornata.
+        Genera predizioni per tutte le partite della giornata, includendo 1X2, doppia chance,
+        goal/no goal e over/under 2.5.
         """
         try:
             if not self.historical_data:
@@ -484,22 +501,18 @@ class PredictorGUI(QMainWindow):
             for row in range(selected_rows):
                 home_combo = self.matches_table.cellWidget(row, 0)
                 away_combo = self.matches_table.cellWidget(row, 1)
-                odds_1_spin = self.matches_table.cellWidget(row, 2)
-                odds_x_spin = self.matches_table.cellWidget(row, 3)
-                odds_2_spin = self.matches_table.cellWidget(row, 4)
-
-                if all([home_combo, away_combo, odds_1_spin, odds_x_spin, odds_2_spin]):
+                
+                # Raccogli tutte le quote
+                odds_widgets = [self.matches_table.cellWidget(row, i) for i in range(2, 11)]
+                
+                if all([home_combo, away_combo] + odds_widgets):
                     home_team = home_combo.currentText()
                     away_team = away_combo.currentText()
                     if home_team == away_team:
                         raise ValueError(f"Riga {row+1}: Le squadre devono essere diverse")
                     
                     matches.append((home_team, away_team))
-                    bookie_odds.append([
-                        odds_1_spin.value(),
-                        odds_x_spin.value(),
-                        odds_2_spin.value()
-                    ])
+                    bookie_odds.append([widget.value() for widget in odds_widgets])
             
             if not matches:
                 raise ValueError("Inserire almeno una partita")
@@ -518,7 +531,7 @@ class PredictorGUI(QMainWindow):
                 n_simulations = self.mc_iterations_spin.value()
                 model = SerieAMonteCarloWrapper(CURRENT_TEAMS, n_simulations=n_simulations)
             elif model_type == "Neural Network":
-                model = SerieANeuralNetworkWrapper(CURRENT_TEAMS)
+                model = SerieAEnhancedNeuralNetworkWrapper(CURRENT_TEAMS)
             else:  # Ensemble
                 model = SerieAEnsembleWrapper(CURRENT_TEAMS)
             
@@ -530,6 +543,7 @@ class PredictorGUI(QMainWindow):
             
             # Genera predizioni per ogni partita
             self.prediction_table.setRowCount(len(matches))
+            self.additional_prediction_table.setRowCount(len(matches))
             total_confidence = 0
 
             print("\n=== Analisi Partite ===")
@@ -541,98 +555,138 @@ class PredictorGUI(QMainWindow):
                 # Formatta la stringa della partita
                 match_str = f"{home_team} vs {away_team}"
                 
-                # Calcola le probabilità e le quote
-                probs = [
-                    prediction['home_win'],
-                    prediction['draw'],
-                    prediction['away_win']
+                # Estrai tutte le probabilità
+                probs_1x2 = [
+                    prediction['match_result']['home_win'],
+                    prediction['match_result']['draw'],
+                    prediction['match_result']['away_win']
                 ]
-                print(f"Probabilità estratte: {probs}")
-
-                 # Assicuriamoci che le probabilità siano numeri validi
-                probs = [float(p) if p is not None else 0.0 for p in probs]
-                print(f"Probabilità convertite: {probs}")
-
-                # Calcolo quote con controllo per divisione per zero
-                model_odds = []
-                for p in probs:
-                    if p > 0.01:  # Soglia minima per evitare quote irrealistiche
-                        model_odds.append(1/p)
-                    else:
-                        model_odds.append(100.0)  # Quota massima per probabilità molto basse
-                print(f"Quote calcolate: {model_odds}")
-
-                model_odds_str = f"{model_odds[0]:.2f}-{model_odds[1]:.2f}-{model_odds[2]:.2f}"
-                bookie_odds_str = f"{match_odds[0]:.2f}-{match_odds[1]:.2f}-{match_odds[2]:.2f}"
-
-                # Trova l'esito più probabile
-                outcomes = ['1', 'X', '2']
-                max_prob_idx = probs.index(max(probs))
-                max_prob_str = f"{outcomes[max_prob_idx]} ({probs[max_prob_idx]:.1%})"
                 
-                #evs = []
-                #for prob, odd in zip(probs, match_odds):
-                #    ev = (prob * odd) - 1
-                #    evs.append(ev)
-                #print(f"EV calcolati: {evs}")
+                probs_dc = [
+                    prediction['double_chance']['1X'],
+                    prediction['double_chance']['X2'],
+                    prediction['double_chance']['12']
+                ]
+                
+                probs_goals = [
+                    prediction['goals']['goal'],
+                    prediction['goals']['no_goal']
+                ]
+                
+                probs_ou = [
+                    prediction['over_under']['under'],
+                    prediction['over_under']['over']
+                ]
 
-                # Trova il miglior EV
-                #max_ev_idx = evs.index(max(evs))
-                #outcomes = ['1', 'X', '2']
-                #best_ev_str = f"{outcomes[max_ev_idx]} ({evs#[max_ev_idx]:+.2%})"
+                # Quote del bookmaker per ogni tipo di mercato
+                odds_1x2 = match_odds[:3]
+                odds_dc = match_odds[3:6]
+                odds_goals = match_odds[6:8]
+                odds_over = [match_odds[8]]  # Solo over 2.5
 
-                evs, confidence_scores = self.calculate_improved_ev(probs, match_odds)
-        
-                # Trova il miglior EV solo se ha confidenza sufficiente
-                valid_evs = [(ev, idx) for idx, (ev, conf) in enumerate(zip(evs, confidence_scores)) 
+                # Calcola gli EV e la confidenza per ogni mercato
+                evs_1x2, conf_1x2 = self.calculate_improved_ev(probs_1x2, odds_1x2)
+                evs_dc, conf_dc = self.calculate_improved_ev(probs_dc, odds_dc)
+                evs_goals, conf_goals = self.calculate_improved_ev(probs_goals, odds_goals)
+                evs_ou = [(probs_ou[1] * odds_over[0]) - 1]  # EV solo per over
+                conf_ou = [abs(probs_ou[1] - 0.5)]  # Confidenza per over
+
+                # Popola la tabella principale (1X2)
+                model_odds_1x2 = [1/p if p > 0.01 else 100.0 for p in probs_1x2]
+                model_odds_str = f"{model_odds_1x2[0]:.2f}-{model_odds_1x2[1]:.2f}-{model_odds_1x2[2]:.2f}"
+                bookie_odds_str = f"{odds_1x2[0]:.2f}-{odds_1x2[1]:.2f}-{odds_1x2[2]:.2f}"
+
+                # Formatta gli EV con indicatori di confidenza
+                ev_cells_1x2 = [
+                    f"{ev:+.2%} {'(✓)' if conf >= 0.49 else '(!)'}"
+                    for ev, conf in zip(evs_1x2, conf_1x2)
+                ]
+
+                # Trova il miglior EV con confidenza sufficiente
+                valid_evs = [(ev, idx) for idx, (ev, conf) in enumerate(zip(evs_1x2, conf_1x2)) 
                             if conf >= 0.49]
                 
+                best_ev_str = "No valid EV"
                 if valid_evs:
                     max_ev, max_ev_idx = max(valid_evs, key=lambda x: x[0])
+                    outcomes = ['1', 'X', '2']
                     best_ev_str = f"{outcomes[max_ev_idx]} ({max_ev:+.2%})"
-                else:
-                    best_ev_str = "No valid EV"
-                
-                # Aggiunge indicatori di confidenza alla visualizzazione
-                ev_cells = []
-                for ev, conf in zip(evs, confidence_scores):
-                    if conf >= 0.49:
-                        ev_cells.append(f"{ev:+.2%} (✓)")
-                    else:
-                        ev_cells.append(f"{ev:+.2%} (!)")
 
-                # Calcola la confidenza della predizione
-                confidence = prediction.get('confidence')
-
-                if confidence is None:
-                    confidence = max(probs) - min(probs)
-                    print(f"Confidenza calcolata dalla differenza delle probabilità: {confidence}")
-                else:
-                    print(f"Confidenza fornita dal modello: {confidence}")
-                
-                total_confidence += confidence
-                print(f"Total confidence accumulata: {total_confidence}")
-
-                # Popola la riga della tabella
+                # Popola la tabella principale
                 self.prediction_table.setItem(i, 0, QTableWidgetItem(match_str))
-                self.prediction_table.setItem(i, 1, QTableWidgetItem(f"{probs[0]:.1%}"))
-                self.prediction_table.setItem(i, 2, QTableWidgetItem(f"{probs[1]:.1%}"))
-                self.prediction_table.setItem(i, 3, QTableWidgetItem(f"{probs[2]:.1%}"))
+                self.prediction_table.setItem(i, 1, QTableWidgetItem(f"{probs_1x2[0]:.1%}"))
+                self.prediction_table.setItem(i, 2, QTableWidgetItem(f"{probs_1x2[1]:.1%}"))
+                self.prediction_table.setItem(i, 3, QTableWidgetItem(f"{probs_1x2[2]:.1%}"))
                 self.prediction_table.setItem(i, 4, QTableWidgetItem(model_odds_str))
                 self.prediction_table.setItem(i, 5, QTableWidgetItem(bookie_odds_str))
-                self.prediction_table.setItem(i, 6, QTableWidgetItem(ev_cells[0]))
-                self.prediction_table.setItem(i, 7, QTableWidgetItem(ev_cells[1]))
-                self.prediction_table.setItem(i, 8, QTableWidgetItem(ev_cells[2]))
+                self.prediction_table.setItem(i, 6, QTableWidgetItem(ev_cells_1x2[0]))
+                self.prediction_table.setItem(i, 7, QTableWidgetItem(ev_cells_1x2[1]))
+                self.prediction_table.setItem(i, 8, QTableWidgetItem(ev_cells_1x2[2]))
                 self.prediction_table.setItem(i, 9, QTableWidgetItem(best_ev_str))
-            
-            # Calcola la confidenza media solo se abbiamo partite valide
-            if matches:
-                avg_confidence = total_confidence / len(matches)
-                print(f"\nConfidenza media finale: {avg_confidence}")
-            else:
-                avg_confidence = 0.0
 
-            # Aggiorna statistiche generali
+                # Popola la tabella delle predizioni aggiuntive
+                self.additional_prediction_table.setItem(i, 0, QTableWidgetItem(match_str))
+                
+                # Doppia chance
+                for j, (prob, ev, conf) in enumerate(zip(probs_dc, evs_dc, conf_dc)):
+                    ev_str = f"{ev:+.2%} {'(✓)' if conf >= 0.49 else '(!)'}"
+                    self.additional_prediction_table.setItem(i, j + 1, 
+                        QTableWidgetItem(f"{prob:.1%} | {ev_str}"))
+                
+                # Goal/NoGoal
+                for j, (prob, ev, conf) in enumerate(zip(probs_goals, evs_goals, conf_goals)):
+                    ev_str = f"{ev:+.2%} {'(✓)' if conf >= 0.49 else '(!)'}"
+                    self.additional_prediction_table.setItem(i, j + 4, 
+                        QTableWidgetItem(f"{prob:.1%} | {ev_str}"))
+                
+                # Over/Under
+                self.additional_prediction_table.setItem(i, 6, 
+                    QTableWidgetItem(f"{probs_ou[1]:.1%} | {evs_ou[0]:+.2%}"))
+                self.additional_prediction_table.setItem(i, 7, 
+                    QTableWidgetItem(f"{probs_ou[0]:.1%} | N/A"))
+
+                # Trova il miglior EV tra tutti i mercati
+                all_evs = []
+                all_confs = []
+                all_markets = []
+
+                # 1X2
+                all_evs.extend(evs_1x2)
+                all_confs.extend(conf_1x2)
+                all_markets.extend(['1', 'X', '2'])
+
+                # Doppia chance
+                all_evs.extend(evs_dc)
+                all_confs.extend(conf_dc)
+                all_markets.extend(['1X', 'X2', '12'])
+
+                # Goal/NoGoal
+                all_evs.extend(evs_goals)
+                all_confs.extend(conf_goals)
+                all_markets.extend(['GG', 'NG'])
+
+                # Over/Under
+                all_evs.extend(evs_ou)
+                all_confs.extend(conf_ou)
+                all_markets.extend(['O2.5'])
+
+                valid_all_evs = [(ev, idx) for idx, (ev, conf) in enumerate(zip(all_evs, all_confs))
+                                if conf >= 0.49]
+
+                if valid_all_evs:
+                    max_ev, max_ev_idx = max(valid_all_evs, key=lambda x: x[0])
+                    best_overall_ev = f"{all_markets[max_ev_idx]} ({max_ev:+.2%})"
+                else:
+                    best_overall_ev = "No valid EV"
+
+                self.additional_prediction_table.setItem(i, 8, QTableWidgetItem(best_overall_ev))
+
+                # Aggiorna la confidenza totale
+                confidence = max(conf_1x2 + conf_dc + conf_goals + conf_ou)
+                total_confidence += confidence
+
+            # Calcola e mostra le statistiche
+            avg_confidence = total_confidence / len(matches) if matches else 0.0
             
             stats = (
                 f"Statistiche giornata:\n"
@@ -1232,7 +1286,7 @@ class PredictorGUI(QMainWindow):
             'bayes_std': SerieABayesModelWrapper(CURRENT_TEAMS, model_type='standard'),
             'bayes_draw': SerieABayesModelWrapper(CURRENT_TEAMS, model_type='draw'),
             'montecarlo': SerieAMonteCarloWrapper(CURRENT_TEAMS, n_simulations=10000),
-            'nn': SerieANeuralNetworkWrapper(CURRENT_TEAMS),
+            'nn': SerieAEnhancedNeuralNetworkWrapper(CURRENT_TEAMS),
             'ensemble': SerieAEnsembleWrapper(CURRENT_TEAMS)
         }
         
@@ -1308,7 +1362,7 @@ class PredictorGUI(QMainWindow):
                 'bayes_std': SerieABayesModelWrapper(CURRENT_TEAMS, model_type='standard'),
                 'bayes_draw': SerieABayesModelWrapper(CURRENT_TEAMS, model_type='draw'),
                 'montecarlo': SerieAMonteCarloWrapper(CURRENT_TEAMS, n_simulations=10000),
-                'nn': SerieANeuralNetworkWrapper(CURRENT_TEAMS),
+                'nn': SerieAEnhancedNeuralNetworkWrapper(CURRENT_TEAMS),
                 'ensemble': SerieAEnsembleWrapper(CURRENT_TEAMS)
             }
             
