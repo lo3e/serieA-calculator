@@ -11862,5 +11862,29 @@
         "away_goals": 2,
         "date": "2024-12-22",
         "notes": ""
+    },
+    {
+        "home_team": "Monza",
+        "away_team": "Juventus",
+        "home_goals": 1,
+        "away_goals": 2,
+        "date": "2024-12-22",
+        "notes": ""
+    },
+    {
+        "home_team": "Fiorentina",
+        "away_team": "Udinese",
+        "home_goals": 1,
+        "away_goals": 2,
+        "date": "2024-12-23",
+        "notes": ""
+    },
+    {
+        "home_team": "Inter",
+        "away_team": "Como",
+        "home_goals": 2,
+        "away_goals": 0,
+        "date": "2024-12-23",
+        "notes": ""
     }
 ]
