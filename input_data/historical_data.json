@@ -12142,5 +12142,69 @@
         "away_goals": 1,
         "date": "2025-01-18",
         "notes": ""
+    },
+    {
+        "home_team": "Juventus",
+        "away_team": "Milan",
+        "home_goals": 2,
+        "away_goals": 0,
+        "date": "2025-01-18",
+        "notes": ""
+    },
+    {
+        "home_team": "Atalanta",
+        "away_team": "Napoli",
+        "home_goals": 2,
+        "away_goals": 3,
+        "date": "2025-01-18",
+        "notes": ""
+    },
+    {
+        "home_team": "Fiorentina",
+        "away_team": "Torino",
+        "home_goals": 1,
+        "away_goals": 1,
+        "date": "2025-01-19",
+        "notes": ""
+    },
+    {
+        "home_team": "Cagliari",
+        "away_team": "Lecce",
+        "home_goals": 4,
+        "away_goals": 1,
+        "date": "2025-01-19",
+        "notes": ""
+    },
+    {
+        "home_team": "Parma",
+        "away_team": "Venezia",
+        "home_goals": 1,
+        "away_goals": 1,
+        "date": "2025-01-19",
+        "notes": ""
+    },
+    {
+        "home_team": "Verona",
+        "away_team": "Lazio",
+        "home_goals": 0,
+        "away_goals": 3,
+        "date": "2025-01-19",
+        "notes": ""
+    },
+    {
+        "home_team": "Inter",
+        "away_team": "Empoli",
+        "home_goals": 3,
+        "away_goals": 1,
+        "date": "2025-01-19",
+        "notes": ""
+    },
+    {
+        "home_team": "Como",
+        "away_team": "Udinese",
+        "home_goals": 4,
+        "away_goals": 1,
+        "date": "2025-01-20",
+        "notes": ""
     }
 ]
