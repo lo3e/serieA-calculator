@@ -14,7 +14,7 @@ from matplotlib.figure import Figure
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                            QHBoxLayout, QLabel, QComboBox, QSpinBox, 
                            QTextEdit, QPushButton, QTabWidget, QGridLayout,
-                           QTableWidget, QTableWidgetItem, QMessageBox,
+                           QTableWidget, QTableWidgetItem, QMessageBox, QCheckBox,
                            QScrollArea, QFileDialog, QProgressBar, QGroupBox, QSizePolicy, QDateEdit, QLineEdit, QDoubleSpinBox)
 from PyQt6.QtCore import Qt, QTimer, QDate
 import pandas as pd
@@ -58,21 +58,21 @@ class PredictorGUI(QMainWindow):
         predictions_tab = QWidget()
         historical_data_tab = QWidget()
         analysis_tab = QWidget()
-        comparison_tab = QWidget()
-        validation_tab = QWidget()
+        #comparison_tab = QWidget()
+        #validation_tab = QWidget()
         
         tab_widget.addTab(predictions_tab, "Predizioni")
-        tab_widget.addTab(analysis_tab, "Analisi Temporale")
-        tab_widget.addTab(comparison_tab, "Confronto Modelli")
-        tab_widget.addTab(validation_tab, "Validazione")
+        tab_widget.addTab(analysis_tab, "Statistiche")
+        #tab_widget.addTab(comparison_tab, "Confronto Modelli")
+        #tab_widget.addTab(validation_tab, "Validazione")
         tab_widget.addTab(historical_data_tab, "Dati Storici")
         
         # Setup tabs
         self._setup_predictions_tab(predictions_tab)
         self._setup_historical_data_tab(historical_data_tab)
         self._setup_analysis_tab(analysis_tab)
-        self._setup_comparison_tab(comparison_tab)
-        self._setup_validation_tab(validation_tab)
+        #self._setup_comparison_tab(comparison_tab)
+        #self._setup_validation_tab(validation_tab)
         
         # Load historical data
         self._load_historical_data()
@@ -107,9 +107,16 @@ class PredictorGUI(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, "Errore", f"Errore nel caricamento dei dati storici: {str(e)}")
 
+    def _toggle_odds(self, state):
+        is_checked = state == Qt.CheckState.Checked
+        self.odds_group.setVisible(is_checked)
+
     def _setup_predictions_tab(self, tab):
         layout = QVBoxLayout(tab)
-    
+
+        # Container principale orizzontale
+        main_container = QHBoxLayout()
+        
         # Sezione input giornata
         input_group = QWidget()
         input_layout = QGridLayout(input_group)
@@ -158,15 +165,10 @@ class PredictorGUI(QMainWindow):
         matches_layout.addLayout(matches_controls)
 
         self.matches_table = QTableWidget()
-        self.matches_table.setColumnCount(11)  # Aumentato per includere le nuove quote
+        self.matches_table.setColumnCount(2)
         self.matches_table.setRowCount(10)
         self.matches_table.setHorizontalHeaderLabels([
-            "Squadra Casa", "Squadra Trasferta", 
-            "Quota 1", "Quota X", "Quota 2",
-            "Quota 1X", "Quota X2", "Quota 12",  # Doppia chance
-            "Quota Goal", "Quota NoGoal",        # Goal/NoGoal
-            "Quota Over 2.5"                     # Over/Under
-        ])
+            "Squadra Casa", "Squadra Trasferta"])
         
         # Popola le celle con ComboBox e SpinBox
         for row in range(10):
@@ -175,26 +177,53 @@ class PredictorGUI(QMainWindow):
             home_combo.addItems(CURRENT_TEAMS)
             away_combo.addItems(CURRENT_TEAMS)
 
-            # Create all odds spinboxes
-            odds_spinboxes = []
-            for i in range(9):  # 9 quote totali
+            # Set cell widgets
+            self.matches_table.setCellWidget(row, 0, home_combo)
+            self.matches_table.setCellWidget(row, 1, away_combo)
+        
+        matches_layout.addWidget(self.matches_table)
+        
+        # Container per quote e opzioni
+        options_container = QWidget()
+        options_layout = QVBoxLayout(options_container)
+        
+        # Checkbox per abilitare quote
+        self.enable_odds_checkbox = QCheckBox("Abilita Quote Bookmaker")
+        self.enable_odds_checkbox.stateChanged.connect(self._toggle_odds)
+        options_layout.addWidget(self.enable_odds_checkbox)
+        
+        # Spazio per il box delle quote (inizialmente nascosto)
+        self.odds_group = QGroupBox("Quote Bookmaker")
+        self.odds_group.setVisible(False)
+        odds_layout = QVBoxLayout(self.odds_group)
+        
+        # Tabella quote
+        self.odds_table = QTableWidget()
+        self.odds_table.setColumnCount(9)
+        self.odds_table.setRowCount(10)
+        self.odds_table.setHorizontalHeaderLabels([
+            "Quota 1", "Quota X", "Quota 2",
+            "Quota 1X", "Quota X2", "Quota 12",
+            "Quota Goal", "Quota NoGoal", "Quota Over 2.5"
+        ])
+        
+        # Popola le celle con SpinBox per le quote
+        for row in range(10):
+            for col in range(9):
                 odds_spin = QDoubleSpinBox()
                 odds_spin.setRange(1.01, 50.0)
                 odds_spin.setDecimals(2)
                 odds_spin.setValue(1.90)
                 odds_spin.setSingleStep(0.05)
-                odds_spinboxes.append(odds_spin)
+                self.odds_table.setCellWidget(row, col, odds_spin)
+        
+        odds_layout.addWidget(self.odds_table)
+        options_layout.addWidget(self.odds_group)
 
-            # Set cell widgets
-            self.matches_table.setCellWidget(row, 0, home_combo)
-            self.matches_table.setCellWidget(row, 1, away_combo)
-            for i, odds_spin in enumerate(odds_spinboxes):
-                self.matches_table.setCellWidget(row, i + 2, odds_spin)
-        
-        matches_layout.addWidget(self.matches_table)
-        
-        layout.addWidget(input_group)
-        layout.addWidget(matches_group)
+        main_container.addWidget(input_group)
+        main_container.addWidget(matches_group)
+        main_container.addWidget(options_container)
+        layout.addLayout(main_container)
         
         # Pulsante predizione
         predict_btn = QPushButton("Genera Predizioni")
@@ -880,6 +909,7 @@ class PredictorGUI(QMainWindow):
         self.prediction_accuracy_fig.subplots_adjust(bottom=0.2)
         prediction_layout.addWidget(self.prediction_accuracy_canvas)
         scroll_layout.addWidget(prediction_container)
+        self.prediction_container = prediction_container
 
         # Results distribution graph (Wins, Draws, Losses)
         results_container = QWidget()
@@ -1002,6 +1032,7 @@ class PredictorGUI(QMainWindow):
         comparison_layout.addWidget(self.comparison_canvas)
         layout.addWidget(comparison_container)
 
+    '''
     def _setup_validation_tab(self, tab):
         layout = QVBoxLayout(tab)
         
@@ -1042,7 +1073,7 @@ class PredictorGUI(QMainWindow):
         # Validation statistics
         self.validation_stats_label = QLabel()
         layout.addWidget(self.validation_stats_label)
-
+    '''
 
     def _update_analysis_graphs(self):
         team = self.analysis_team_combo.currentText()
@@ -1278,6 +1309,7 @@ class PredictorGUI(QMainWindow):
         
         self.h2h_canvas.draw()
 
+    '''
     def _compare_models(self):
         # Run predictions with all models on a test set
         test_matches = self._get_recent_matches(100)  # Get last 10 matches for testing
@@ -1465,6 +1497,7 @@ class PredictorGUI(QMainWindow):
             reverse=True
         )
         return sorted_matches[:n]
+    '''
 
 def main():
     app = QApplication(sys.argv)
